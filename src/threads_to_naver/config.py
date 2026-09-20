@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -29,6 +30,7 @@ class Config:
     state_db: Path
     source: str
     simplenote_tag: str
+    simplenote_start_date: date | None
     simplenote_provider: str
     simplenote_store_path: Path | None
     simplenote_mcp_command: Path
@@ -69,6 +71,17 @@ class Config:
         ).strip().lower()
         if simplenote_provider not in {"local", "api"}:
             raise ValueError("simplenote_provider must be either 'local' or 'api'.")
+        simplenote_start_value = str(raw.get("simplenote_start_date", "")).strip()
+        try:
+            simplenote_start_date = (
+                date.fromisoformat(simplenote_start_value)
+                if simplenote_start_value
+                else None
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "simplenote_start_date must be empty or use YYYY-MM-DD format."
+            ) from exc
         simplenote_command_value = str(
             raw.get(
                 "simplenote_mcp_command",
@@ -100,6 +113,7 @@ class Config:
             state_db=data_dir / "state.sqlite3",
             source=source,
             simplenote_tag=str(raw.get("simplenote_tag", "naver")).strip(),
+            simplenote_start_date=simplenote_start_date,
             simplenote_provider=simplenote_provider,
             simplenote_store_path=(
                 Path(simplenote_store_value).expanduser()

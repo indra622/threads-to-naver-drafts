@@ -18,6 +18,8 @@ max_posts_per_run = 20
 # Simplenote uses Automattic's official read-only local MCP server.
 # Add the `naver` tag to notes that are ready for the daily queue.
 simplenote_tag = "naver"
+# Optional creation-date cutoff in the configured timezone. Empty means no cutoff.
+simplenote_start_date = ""
 simplenote_provider = "local"
 simplenote_store_path = "~/Library/Group Containers/PZYM8XX95Q.com.automattic.SimplenoteMac/Data/Simplenote.storedata"
 simplenote_mcp_command = "node_modules/.bin/simplenote-mcp"

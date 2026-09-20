@@ -44,6 +44,7 @@ def config(tmp_path: Path) -> Config:
         state_db=data_dir / "state.sqlite3",
         source="threads",
         simplenote_tag="naver",
+        simplenote_start_date=None,
         simplenote_provider="local",
         simplenote_store_path=tmp_path / "Simplenote.storedata",
         simplenote_mcp_command=tmp_path / "simplenote-mcp",

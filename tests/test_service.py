@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from threads_to_naver.models import ThreadPost
 from threads_to_naver.naver import TempDraft
@@ -251,3 +251,53 @@ def test_simplenote_run_uses_tag_and_oldest_pending_first(
     assert [item.id for item in captured["items"]] == ["simplenote:older"]
     assert captured["items"][0].text == "오래된 본문"
     assert captured["dry_run"] is True
+
+
+def test_simplenote_run_excludes_notes_created_before_local_start_date(
+    config, monkeypatch
+) -> None:
+    captured = {}
+    notes = [
+        SimplenoteNote(
+            id="before",
+            content="이전 글\n제외",
+            tags=("AI교양",),
+            created=datetime(2026, 9, 20, 14, 59, tzinfo=UTC),
+        ),
+        SimplenoteNote(
+            id="after",
+            content="새 글\n포함",
+            tags=("AI교양",),
+            created=datetime(2026, 9, 20, 15, 1, tzinfo=UTC),
+        ),
+    ]
+
+    class FakeClient:
+        def __init__(self, _command, _store_path) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            pass
+
+        def list_tagged_notes(self, tag: str, limit: int):
+            captured["tag"] = tag
+            return notes
+
+    def fake_create(_config, items, **_kwargs) -> int:
+        captured["items"] = items
+        return len(items)
+
+    scoped_config = replace(
+        config,
+        simplenote_tag="AI교양",
+        simplenote_start_date=date(2026, 9, 21),
+    )
+    monkeypatch.setattr("threads_to_naver.service.SimplenoteMCPClient", FakeClient)
+    monkeypatch.setattr("threads_to_naver.service._create_drafts", fake_create)
+
+    assert run_simplenote(scoped_config, dry_run=True) == 1
+    assert captured["tag"] == "AI교양"
+    assert [item.id for item in captured["items"]] == ["simplenote:after"]

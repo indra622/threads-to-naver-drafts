@@ -90,6 +90,13 @@ def run_simplenote(
             config.simplenote_tag,
             limit=config.simplenote_scan_limit,
         )
+    if config.simplenote_start_date is not None:
+        notes = [
+            note
+            for note in notes
+            if note.created.astimezone(config.timezone).date()
+            >= config.simplenote_start_date
+        ]
     items = sorted(
         (note.to_draft_item() for note in notes),
         key=lambda item: (item.timestamp, item.id),
