@@ -541,14 +541,21 @@ def _footer_link_count(page: Page, url: str) -> int:
 def _find_last_visible_text_paragraph(page: Page) -> Locator:
     visible: list[Locator] = []
     for frame in _candidate_frames(page):
-        paragraphs = frame.locator(".se-text-paragraph")
+        paragraphs = frame.locator(".se-section-text .se-text-paragraph")
         for index in range(min(paragraphs.count(), 500)):
             paragraph = paragraphs.nth(index)
             if paragraph.is_visible():
                 visible.append(paragraph)
     if not visible:
         raise RuntimeError("Could not find the end of the Naver draft body.")
-    return visible[-1]
+    return next(
+        (
+            paragraph
+            for paragraph in reversed(visible)
+            if (paragraph.inner_text() or "").strip()
+        ),
+        visible[-1],
+    )
 
 
 def _place_caret_at_end(paragraph: Locator) -> None:

@@ -5,6 +5,7 @@ from playwright.sync_api import sync_playwright
 from threads_to_naver.naver import (
     _current_draft_count,
     _dismiss_restore_popup,
+    _find_last_visible_text_paragraph,
     _insert_text_link_at_cursor,
     _insert_verbatim,
     _is_safe_draft_label,
@@ -179,4 +180,21 @@ def test_clickable_link_can_be_inserted_at_empty_cursor() -> None:
         _insert_text_link_at_cursor(page, url)
 
         assert page.locator(f'.se-link[data-href="{url}"]').count() == 1
+        browser.close()
+
+
+def test_footer_uses_last_nonempty_body_paragraph() -> None:
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(
+            '<div class="se-documentTitle"><p class="se-text-paragraph">제목</p></div>'
+            '<div class="se-section-text">'
+            '<p class="se-text-paragraph">본문 끝</p>'
+            '<p class="se-text-paragraph"></p></div>'
+        )
+
+        paragraph = _find_last_visible_text_paragraph(page)
+
+        assert paragraph.inner_text() == "본문 끝"
         browser.close()
