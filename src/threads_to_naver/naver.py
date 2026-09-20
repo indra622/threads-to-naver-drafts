@@ -221,8 +221,7 @@ class NaverDraftWriter:
         if _editor_body_text(page).strip():
             page.keyboard.press("Shift+Enter")
             page.keyboard.press("Shift+Enter")
-        page.keyboard.insert_text(footer_url)
-        _make_text_link(page, footer_url)
+        _insert_text_link_at_cursor(page, footer_url)
         paragraph = _find_paragraph_containing(page, footer_url)
         _place_caret_at_end(paragraph)
         page.keyboard.press("Shift+Enter")
@@ -501,6 +500,30 @@ def _make_text_link(page: Page, url: str) -> None:
     page.wait_for_timeout(500)
     if _footer_link_count(page, url) == 0:
         raise RuntimeError("Naver did not create a clickable footer link.")
+
+
+def _insert_text_link_at_cursor(page: Page, url: str) -> None:
+    toolbar_button = _find_visible(
+        page,
+        ('button[data-name="text-link"]',),
+        "text-link toolbar button",
+    )
+    toolbar_button.click()
+    url_input = _find_visible(
+        page,
+        ('input[placeholder="URL을 입력하세요."]',),
+        "text-link URL input",
+    )
+    url_input.fill(url)
+    apply_button = _find_visible(
+        page,
+        ("button.se-custom-layer-link-apply-button",),
+        "text-link apply button",
+    )
+    apply_button.click()
+    page.wait_for_timeout(500)
+    if _footer_link_count(page, url) == 0:
+        raise RuntimeError("Naver did not insert a clickable footer link.")
 
 
 def _footer_link_count(page: Page, url: str) -> int:

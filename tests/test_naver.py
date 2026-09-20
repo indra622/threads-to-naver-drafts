@@ -5,6 +5,7 @@ from playwright.sync_api import sync_playwright
 from threads_to_naver.naver import (
     _current_draft_count,
     _dismiss_restore_popup,
+    _insert_text_link_at_cursor,
     _insert_verbatim,
     _is_safe_draft_label,
     _make_text_link,
@@ -151,4 +152,31 @@ def test_footer_url_is_converted_to_clickable_link() -> None:
         _make_text_link(page, url)
 
         assert page.locator(f'a[href="{url}"]').count() == 1
+        browser.close()
+
+
+def test_clickable_link_can_be_inserted_at_empty_cursor() -> None:
+    url = "https://naver.me/example"
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(
+            '<div class="se-component-content" contenteditable="true">'
+            '<p id="target" class="se-text-paragraph"><br></p></div>'
+            '<button data-name="text-link" '
+            "onclick=\"window.savedRange=getSelection().getRangeAt(0).cloneRange();"
+            "document.querySelector('#link-box').style.display='block'\">링크</button>"
+            '<div id="link-box" style="display:none">'
+            '<input placeholder="URL을 입력하세요.">'
+            '<button class="se-custom-layer-link-apply-button" '
+            "onclick=\"const input=document.querySelector('#link-box input');"
+            "const span=document.createElement('span');span.className='se-link';"
+            "span.dataset.href=input.value;span.textContent=input.value;"
+            "window.savedRange.insertNode(span)\">적용</button></div>"
+        )
+        page.locator("#target").click()
+
+        _insert_text_link_at_cursor(page, url)
+
+        assert page.locator(f'.se-link[data-href="{url}"]').count() == 1
         browser.close()
