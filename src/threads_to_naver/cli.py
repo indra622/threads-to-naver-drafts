@@ -13,6 +13,8 @@ from .service import (
     backfill,
     retitle_dated_series_temp_drafts,
     run,
+    run_daily,
+    run_simplenote,
 )
 
 
@@ -26,6 +28,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("setup-token", help="Save a Threads token in macOS Keychain")
     subparsers.add_parser("login", help="Open the persistent browser for Naver login")
+
+    daily_parser = subparsers.add_parser(
+        "daily", help="Run the configured daily source"
+    )
+    daily_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Read the configured source without opening Naver",
+    )
+
+    simplenote_parser = subparsers.add_parser(
+        "simplenote-run",
+        help="Create drafts from Simplenote notes with the configured tag",
+    )
+    simplenote_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Maximum pending notes to process; defaults to the configured daily limit",
+    )
+    simplenote_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Read Simplenote and render JSON without opening Naver",
+    )
 
     run_parser = subparsers.add_parser("run", help="Create drafts for one day")
     date_group = run_parser.add_mutually_exclusive_group()
@@ -105,6 +131,22 @@ def main(argv: list[str] | None = None) -> int:
                 writer.login()
             return 0
 
+        if args.command == "daily":
+            count = run_daily(config, dry_run=args.dry_run)
+            print(f"Completed: {count} item(s).")
+            return 0
+
+        if args.command == "simplenote-run":
+            if args.limit is not None and args.limit < 1:
+                raise ValueError("--limit must be at least 1")
+            count = run_simplenote(
+                config,
+                dry_run=args.dry_run,
+                limit=args.limit,
+            )
+            print(f"Completed: {count} item(s).")
+            return 0
+
         if args.command == "backfill":
             if args.limit is not None and args.limit < 1:
                 raise ValueError("--limit must be at least 1")
@@ -148,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Completed: {count} item(s).")
         return 0
-    except (FileNotFoundError, RuntimeError, ValueError) as error:
+    except (FileNotFoundError, RuntimeError, TypeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 

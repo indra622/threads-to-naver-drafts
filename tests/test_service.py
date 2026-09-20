@@ -11,7 +11,9 @@ from threads_to_naver.service import (
     backfill,
     retitle_dated_series_temp_drafts,
     run,
+    run_simplenote,
 )
+from threads_to_naver.simplenote import SimplenoteNote
 
 
 def test_latest_query_never_uses_a_future_until(config, monkeypatch) -> None:
@@ -198,3 +200,54 @@ def test_dated_title_ignores_configured_footer_inside_source_text(config) -> Non
         [target],
         footer_config,
     ) == "직접 쓰는 AI교양 – 2026.09.20"
+
+
+def test_simplenote_run_uses_tag_and_oldest_pending_first(
+    config, monkeypatch
+) -> None:
+    captured = {}
+    notes = [
+        SimplenoteNote(
+            id="newer",
+            content="새 글\n새 본문",
+            tags=("naver",),
+            created=datetime(2026, 9, 20, tzinfo=UTC),
+        ),
+        SimplenoteNote(
+            id="older",
+            content="직접 쓰는 AI교양\n오래된 본문",
+            tags=("naver",),
+            created=datetime(2026, 9, 18, tzinfo=UTC),
+        ),
+    ]
+
+    class FakeClient:
+        def __init__(self, command, store_path) -> None:
+            captured["command"] = command
+            captured["store_path"] = store_path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            pass
+
+        def list_tagged_notes(self, tag: str, limit: int):
+            captured["tag"] = tag
+            captured["scan_limit"] = limit
+            return notes
+
+    def fake_create(_config, items, **kwargs) -> int:
+        captured["items"] = items
+        captured["dry_run"] = kwargs["dry_run"]
+        return len(items)
+
+    monkeypatch.setattr("threads_to_naver.service.SimplenoteMCPClient", FakeClient)
+    monkeypatch.setattr("threads_to_naver.service._create_drafts", fake_create)
+
+    assert run_simplenote(config, dry_run=True, limit=1) == 1
+    assert captured["tag"] == "naver"
+    assert captured["scan_limit"] == 100
+    assert [item.id for item in captured["items"]] == ["simplenote:older"]
+    assert captured["items"][0].text == "오래된 본문"
+    assert captured["dry_run"] is True

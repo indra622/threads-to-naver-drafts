@@ -1,0 +1,8 @@
+{
+  "name": "threads-to-naver-simplenote-bridge",
+  "private": true,
+  "description": "Pinned official Simplenote MCP runtime for the local source adapter.",
+  "dependencies": {
+    "@automattic/simplenote-mcp": "2.0.1"
+  }
+}

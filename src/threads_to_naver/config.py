@@ -27,6 +27,13 @@ class Config:
     profile_dir: Path
     artifacts_dir: Path
     state_db: Path
+    source: str
+    simplenote_tag: str
+    simplenote_provider: str
+    simplenote_store_path: Path | None
+    simplenote_mcp_command: Path
+    simplenote_scan_limit: int
+    simplenote_max_notes_per_run: int
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> Config:
@@ -46,6 +53,31 @@ class Config:
             if footer_image_value
             else None
         )
+        source = str(raw.get("source", "threads")).strip().lower()
+        if source not in {"threads", "simplenote"}:
+            raise ValueError("source must be either 'threads' or 'simplenote'.")
+        simplenote_store_value = str(
+            raw.get(
+                "simplenote_store_path",
+                "~/Library/Group Containers/"
+                "PZYM8XX95Q.com.automattic.SimplenoteMac/Data/"
+                "Simplenote.storedata",
+            )
+        )
+        simplenote_provider = str(
+            raw.get("simplenote_provider", "local")
+        ).strip().lower()
+        if simplenote_provider not in {"local", "api"}:
+            raise ValueError("simplenote_provider must be either 'local' or 'api'.")
+        simplenote_command_value = str(
+            raw.get(
+                "simplenote_mcp_command",
+                "node_modules/.bin/simplenote-mcp",
+            )
+        )
+        simplenote_mcp_command = Path(simplenote_command_value).expanduser()
+        if not simplenote_mcp_command.is_absolute():
+            simplenote_mcp_command = project_dir / simplenote_mcp_command
         return cls(
             project_dir=project_dir,
             naver_blog_id=str(raw.get("naver_blog_id", "")).strip(),
@@ -66,6 +98,21 @@ class Config:
             profile_dir=data_dir / "browser-profile",
             artifacts_dir=project_dir / "artifacts",
             state_db=data_dir / "state.sqlite3",
+            source=source,
+            simplenote_tag=str(raw.get("simplenote_tag", "naver")).strip(),
+            simplenote_provider=simplenote_provider,
+            simplenote_store_path=(
+                Path(simplenote_store_value).expanduser()
+                if simplenote_provider == "local"
+                else None
+            ),
+            simplenote_mcp_command=simplenote_mcp_command,
+            simplenote_scan_limit=min(
+                100, max(1, int(raw.get("simplenote_scan_limit", 100)))
+            ),
+            simplenote_max_notes_per_run=max(
+                1, int(raw.get("simplenote_max_notes_per_run", 2))
+            ),
         )
 
     def ensure_directories(self) -> None:

@@ -23,9 +23,13 @@ class ThreadPost:
     is_reply: bool = False
     is_repost: bool = False
     media: tuple[Media, ...] = field(default_factory=tuple)
+    title_override: str | None = None
+    source_name: str = "Threads"
 
     @property
     def source_title(self) -> str:
+        if self.title_override is not None:
+            return self.title_override.strip()
         return next(
             (line.strip() for line in self.text.splitlines() if line.strip()), ""
         )
@@ -38,7 +42,7 @@ class ThreadPost:
                 local_date = self.timestamp.astimezone(timezone)
                 return f"{first_nonempty} – {local_date:%Y.%m.%d}"
             return first_nonempty[:100]
-        return f"Threads {self.timestamp:%Y-%m-%d %H:%M} ({self.id})"
+        return f"{self.source_name} {self.timestamp:%Y-%m-%d %H:%M} ({self.id})"
 
     @property
     def title(self) -> str:

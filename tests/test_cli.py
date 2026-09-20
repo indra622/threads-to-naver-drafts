@@ -38,3 +38,18 @@ def test_retitle_series_limit_is_available() -> None:
     assert args.command == "retitle-series"
     assert args.limit == 10
     assert args.dry_run is True
+
+
+def test_simplenote_run_limit_is_available() -> None:
+    args = build_parser().parse_args(
+        ["simplenote-run", "--limit", "2", "--dry-run"]
+    )
+    assert args.command == "simplenote-run"
+    assert args.limit == 2
+    assert args.dry_run is True
+
+
+def test_daily_dry_run_is_available() -> None:
+    args = build_parser().parse_args(["daily", "--dry-run"])
+    assert args.command == "daily"
+    assert args.dry_run is True

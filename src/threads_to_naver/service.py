@@ -15,6 +15,7 @@ from .secrets import (
     get_threads_token_saved_at,
     save_threads_token,
 )
+from .simplenote import SimplenoteMCPClient
 from .state import StateStore
 from .threads_api import ThreadsAPI
 
@@ -70,6 +71,44 @@ def backfill(config: Config, dry_run: bool = False, limit: int | None = None) ->
         dry_run=dry_run,
         dry_run_name="backfill",
     )
+
+
+def run_simplenote(
+    config: Config,
+    *,
+    dry_run: bool = False,
+    limit: int | None = None,
+) -> int:
+    """Create drafts from pending Simplenote notes carrying the queue tag."""
+    config.ensure_directories()
+    effective_limit = limit or config.simplenote_max_notes_per_run
+    with SimplenoteMCPClient(
+        config.simplenote_mcp_command,
+        config.simplenote_store_path,
+    ) as client:
+        notes = client.list_tagged_notes(
+            config.simplenote_tag,
+            limit=config.simplenote_scan_limit,
+        )
+    items = sorted(
+        (note.to_draft_item() for note in notes),
+        key=lambda item: (item.timestamp, item.id),
+    )
+    with StateStore(config.state_db) as state:
+        pending = [item for item in items if not state.contains(item.id)]
+    return _create_drafts(
+        config,
+        pending[:effective_limit],
+        dry_run=dry_run,
+        dry_run_name="simplenote",
+    )
+
+
+def run_daily(config: Config, *, dry_run: bool = False) -> int:
+    if config.source == "simplenote":
+        return run_simplenote(config, dry_run=dry_run)
+    target_date = datetime.now(config.timezone).date() - timedelta(days=1)
+    return run(config, target_date, dry_run=dry_run)
 
 
 def append_footer_to_temp_drafts(
@@ -246,7 +285,7 @@ def _create_drafts(
             return len(pending)
 
         if not pending:
-            print("No new Threads posts to draft.")
+            print("No new source items to draft.")
             return 0
 
         created = 0
@@ -258,7 +297,7 @@ def _create_drafts(
                 writer.create_draft(post, media_paths)
                 state.mark_drafted(post.id, post.permalink, post.timestamp, title)
                 created += 1
-                print(f"Drafted Threads post {post.id}: {title}")
+                print(f"Drafted source item {post.id}: {title}")
         return created
 
 

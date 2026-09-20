@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import plistlib
+import shutil
 from pathlib import Path
 
 LABEL = "local.threads-to-naver-drafts"
@@ -23,14 +24,19 @@ def main() -> int:
     log_dir = Path.home() / "Library" / "Logs" / "threads-to-naver"
     log_dir.mkdir(parents=True, exist_ok=True)
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+    node = shutil.which("node")
+    executable_path = "/usr/bin:/bin:/usr/sbin:/sbin"
+    if node:
+        executable_path = f"{Path(node).parent}:{executable_path}"
     payload = {
         "Label": LABEL,
-        "ProgramArguments": [str(executable), "run"],
+        "ProgramArguments": [str(executable), "daily"],
         "WorkingDirectory": str(project),
         "StartCalendarInterval": {"Hour": args.hour, "Minute": args.minute},
         "StandardOutPath": str(log_dir / "stdout.log"),
         "StandardErrorPath": str(log_dir / "stderr.log"),
         "ProcessType": "Background",
+        "EnvironmentVariables": {"PATH": executable_path},
     }
     plist_path.parent.mkdir(parents=True, exist_ok=True)
     with plist_path.open("wb") as file:

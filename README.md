@@ -1,11 +1,13 @@
-# Threads → Naver Blog drafts
+# Threads / Simplenote → Naver Blog drafts
 
-내 Threads 게시물을 공식 Threads API로 읽어 원문 그대로 네이버 블로그의 **임시저장 초안**으로 옮기는 macOS용 자동화 도구입니다.
+Threads 게시물 또는 Simplenote 작업 노트를 네이버 블로그의 **임시저장 초안**으로 옮기는 macOS용 자동화 도구입니다. Simplenote는 Automattic의 공식 `simplenote-mcp`를 사용합니다.
 
 - LLM을 사용하지 않습니다.
 - 네이버 글을 자동 발행하지 않습니다.
 - 게시물 1개를 네이버 초안 1개로 저장합니다.
 - 답글과 리포스트는 기본적으로 제외합니다.
+- Simplenote에서는 설정한 태그(`naver` 기본값)가 붙은 노트만 큐로 읽습니다.
+- Simplenote의 첫 줄은 제목, 나머지 줄은 본문으로 사용합니다.
 - 이미지, 캐러셀, 동영상을 함께 옮깁니다.
 - 설정한 footer 링크와 이미지를 모든 새 초안의 맨 아래에 추가할 수 있습니다.
 - SQLite로 처리 이력을 관리해 중단 후 재개해도 중복 초안을 만들지 않습니다.
@@ -15,6 +17,7 @@
 ## 안전장치
 
 - 본문은 Threads 원문을 그대로 입력합니다.
+- Simplenote 원본은 읽기 전용이며 노트의 태그나 내용을 수정하지 않습니다.
 - 제목은 첫 번째 비어 있지 않은 줄의 앞 100자를 기계적으로 사용합니다. 첫 줄이 `직접 쓰는 AI교양`이면 원문 작성일을 붙여 `직접 쓰는 AI교양 – YYYY.MM.DD`로 저장합니다.
 - 상단의 `저장` 또는 `임시저장`으로 확인된 컨트롤만 클릭합니다.
 - `발행`이 포함된 컨트롤은 저장 버튼으로 인정하지 않습니다.
@@ -27,6 +30,8 @@
 
 - macOS
 - Python 3.11 이상
+- Node.js 22 이상
+- Simplenote macOS 앱의 로컬 저장소 또는 공식 MCP API 로그인
 - [uv](https://docs.astral.sh/uv/)
 - 자신의 게시물을 읽을 수 있는 Threads API 사용자 액세스 토큰
 - 네이버 블로그 계정
@@ -40,6 +45,7 @@ cd threads-to-naver-drafts
 cp config.example.toml config.toml
 uv sync --extra dev
 uv run playwright install chromium
+npm install
 ```
 
 `config.toml`은 Git에서 제외됩니다. 블로그가 하나라면 기본값을 그대로 사용해도 됩니다.
@@ -47,10 +53,17 @@ uv run playwright install chromium
 ```toml
 naver_blog_id = ""
 timezone = "Asia/Seoul"
+source = "threads"
 headless = false
 include_replies = false
 include_reposts = false
 max_posts_per_run = 20
+simplenote_tag = "naver"
+simplenote_provider = "local"
+simplenote_store_path = "~/Library/Group Containers/PZYM8XX95Q.com.automattic.SimplenoteMac/Data/Simplenote.storedata"
+simplenote_mcp_command = "node_modules/.bin/simplenote-mcp"
+simplenote_scan_limit = 100
+simplenote_max_notes_per_run = 2
 naver_write_url = "https://blog.naver.com/{blog_id}/postwrite"
 footer_url = "https://naver.me/5qLhk2hv"
 footer_image_path = "assets/brand-connect-guide.png"
@@ -58,6 +71,19 @@ footer_image_path = "assets/brand-connect-guide.png"
 
 블로그가 여러 개라면 `naver_blog_id`와 해당 블로그의 글쓰기 URL을 설정하세요.
 footer를 바꾸려면 `footer_url`과 `footer_image_path`를 수정하세요. 두 값을 모두 비우면 footer를 추가하지 않습니다.
+
+일배치 소스를 Simplenote로 바꾸려면 `source = "simplenote"`로 설정하세요. `simplenote_max_notes_per_run = 2`는 한 번에 공개하는 글 수가 아니라, 하루에 만들어 둘 **임시저장 초안 수**의 상한입니다.
+
+### Simplenote 공급자 선택
+
+- `simplenote_provider = "local"`: macOS 앱의 로컬 저장소를 오프라인·읽기 전용으로 사용합니다. 실행 주체에 macOS의 다른 앱 데이터 접근 권한이 필요할 수 있습니다.
+- `simplenote_provider = "api"`: 공식 MCP의 Simperium API 공급자를 사용합니다. 데스크톱 앱 동기화 상태와 무관해 LaunchAgent 일배치에는 이 방식이 더 안정적입니다.
+
+API 모드는 공식 MCP 설정을 한 번 실행합니다. 이메일과 인증 코드는 터미널에만 입력하며 이 프로젝트나 채팅으로 전달되지 않습니다.
+
+```bash
+npm exec -- simplenote-mcp setup
+```
 
 ## 로컬 인증 설정
 
@@ -80,6 +106,26 @@ uv run threads-to-naver login
 열린 브라우저에서 직접 로그인하세요. 비밀번호는 이 프로그램에 전달되지 않습니다.
 
 ## 사용법
+
+### Simplenote 큐 dry-run
+
+Simplenote에서 네이버로 보낼 노트에 `naver` 태그를 붙인 뒤 실행합니다. 처리 완료 여부는 로컬 SQLite에 기록되므로 태그가 계속 남아 있어도 중복 초안을 만들지 않습니다.
+
+```bash
+uv run threads-to-naver simplenote-run --dry-run
+uv run threads-to-naver simplenote-run --limit 2
+```
+
+`--dry-run`은 네이버 브라우저를 열지 않습니다. 노트 생성일을 기준으로 오래된 미처리 항목부터 가져옵니다. 첫 줄이 `직접 쓰는 AI교양`이면 `직접 쓰는 AI교양 – YYYY.MM.DD` 제목 규칙도 동일하게 적용됩니다.
+
+### 설정된 일배치 소스 실행
+
+```bash
+uv run threads-to-naver daily --dry-run
+uv run threads-to-naver daily
+```
+
+`source = "threads"`이면 전날 Threads 게시물을, `source = "simplenote"`이면 태그 큐를 처리합니다.
 
 ### 1. 먼저 dry-run
 
@@ -185,9 +231,10 @@ launchctl bootstrap gui/$(id -u) \
 
 - `config.toml`: 개인 설정
 - `artifacts/`: dry-run JSON, 저장 화면 캡처, 다운로드한 미디어
-- `~/.local/share/threads-to-naver/state.sqlite3`: 중복 방지 기록
+- `~/.local/share/threads-to-naver/state.sqlite3`: Threads와 Simplenote의 중복 방지 기록
 - `~/.local/share/threads-to-naver/browser-profile/`: 네이버 로그인 브라우저 프로필
 - macOS Keychain의 `threads-to-naver-drafts` 항목: Threads 토큰
+- `~/Library/Application Support/simplenote-mcp/`: API 모드 선택 시 공식 MCP 설정과 인증 파일
 
 ## 개발 및 검증
 
@@ -203,5 +250,6 @@ uv run python -m compileall -q src tests scripts
 - 로그인 만료, CAPTCHA, 네트워크 장애가 발생하면 수동 확인이 필요합니다.
 - 임시저장 수가 98개에 도달하면 새 초안 생성을 중단합니다. 기존 초안을 발행하거나 삭제한 뒤 다시 실행하세요.
 - 공개 발행은 의도적으로 구현하지 않았습니다.
+- Simplenote 첨부파일은 공식 MCP 읽기 결과에 포함되지 않아 현재는 텍스트와 본문 URL만 옮깁니다.
 
 개인 계정과 콘텐츠에 적용하기 전에 반드시 `--dry-run`과 최신 게시물 한 건으로 먼저 확인하세요.

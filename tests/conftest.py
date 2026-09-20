@@ -42,4 +42,11 @@ def config(tmp_path: Path) -> Config:
         profile_dir=data_dir / "browser-profile",
         artifacts_dir=tmp_path / "artifacts",
         state_db=data_dir / "state.sqlite3",
+        source="threads",
+        simplenote_tag="naver",
+        simplenote_provider="local",
+        simplenote_store_path=tmp_path / "Simplenote.storedata",
+        simplenote_mcp_command=tmp_path / "simplenote-mcp",
+        simplenote_scan_limit=100,
+        simplenote_max_notes_per_run=2,
     )
