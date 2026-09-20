@@ -3,6 +3,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from threads_to_naver.naver import (
+    _current_draft_count,
     _dismiss_restore_popup,
     _insert_verbatim,
     _is_safe_draft_label,
@@ -113,4 +114,15 @@ def test_video_upload_uses_nested_uploader_and_required_title(
         _upload_video(page, video, "가" * 50)
 
         assert page.locator(".se-popup-video-upload").count() == 0
+        browser.close()
+
+
+def test_current_draft_count_uses_accessible_label() -> None:
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(
+            '<button aria-label="임시저장된 글 보기, 98개">98</button>'
+        )
+        assert _current_draft_count(page) == 98
         browser.close()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +51,7 @@ VIDEO_BUTTON_SELECTORS = (
     'button:has-text("동영상")',
 )
 VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm"}
+SAFE_DRAFT_COUNT_LIMIT = 98
 
 
 class NaverDraftWriter:
@@ -97,6 +99,12 @@ class NaverDraftWriter:
             raise RuntimeError("Naver login expired. Run `threads-to-naver login`.")
 
         _dismiss_restore_popup(page)
+        draft_count = _current_draft_count(page)
+        if draft_count is not None and draft_count >= SAFE_DRAFT_COUNT_LIMIT:
+            raise RuntimeError(
+                f"Naver has {draft_count} temporary drafts. "
+                "Review or publish some drafts before resuming; no new draft was created."
+            )
         title = _find_visible(page, TITLE_SELECTORS, "title editor")
         title.click()
         page.keyboard.press("ControlOrMeta+A")
@@ -272,6 +280,20 @@ def _dismiss_restore_popup(page: Page) -> bool:
                 popup.wait_for(state="hidden", timeout=10_000)
                 return True
     return False
+
+
+def _current_draft_count(page: Page) -> int | None:
+    for frame in _candidate_frames(page):
+        controls = frame.locator('button[aria-label^="임시저장된 글 보기"]')
+        for index in range(min(controls.count(), 10)):
+            control = controls.nth(index)
+            if not control.is_visible():
+                continue
+            label = control.get_attribute("aria-label") or ""
+            match = re.search(r"(\d+)개", label)
+            if match:
+                return int(match.group(1))
+    return None
 
 
 def _upload_video(page: Page, path: Path, title: str) -> None:
