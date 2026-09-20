@@ -216,7 +216,7 @@ class NaverDraftWriter:
     ) -> None:
         if not footer_image_path.is_file():
             raise FileNotFoundError(f"Missing footer image: {footer_image_path}")
-        paragraph = _find_last_visible_text_paragraph(page)
+        paragraph = _find_or_create_footer_paragraph(page)
         if _editor_text_body_text(page).strip():
             if _paragraph_is_in_list(paragraph):
                 _insert_text_link_after_list(page, paragraph, footer_url)
@@ -591,6 +591,23 @@ def _find_last_visible_text_paragraph(page: Page) -> Locator:
         ),
         visible[-1],
     )
+
+
+def _find_or_create_footer_paragraph(page: Page) -> Locator:
+    try:
+        return _find_last_visible_text_paragraph(page)
+    except RuntimeError:
+        add_body = _find_visible(
+            page,
+            ("button.se-canvas-bottom-button",),
+            "add-body button",
+        )
+        add_body.click()
+        return _wait_for_visible(
+            page,
+            (".se-section-text .se-text-paragraph",),
+            "new body text editor",
+        )
 
 
 def _place_caret_at_end(paragraph: Locator) -> None:

@@ -7,6 +7,7 @@ from threads_to_naver.naver import (
     _dismiss_restore_popup,
     _editor_text_body_text,
     _find_last_visible_text_paragraph,
+    _find_or_create_footer_paragraph,
     _insert_text_link_at_cursor,
     _insert_verbatim,
     _is_safe_draft_label,
@@ -231,4 +232,25 @@ def test_list_paragraph_is_detected() -> None:
 
         assert _paragraph_is_in_list(page.locator("#list-item")) is True
         assert _paragraph_is_in_list(page.locator("#normal")) is False
+        browser.close()
+
+
+def test_footer_paragraph_is_created_for_media_only_draft() -> None:
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(
+            '<div class="se-component se-image"></div>'
+            '<button class="se-canvas-bottom-button" '
+            "onclick=\"this.insertAdjacentHTML('beforebegin', "
+            "'<div class=&quot;se-section-text&quot;>"
+            "<p class=&quot;se-text-paragraph&quot; style=&quot;height:20px&quot;>"
+            "<br></p></div>')\">"
+            "본문 추가</button>"
+        )
+
+        paragraph = _find_or_create_footer_paragraph(page)
+
+        assert paragraph.is_visible()
+        assert page.locator(".se-section-text").count() == 1
         browser.close()
