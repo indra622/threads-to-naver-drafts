@@ -1,0 +1,16 @@
+# Non-secret settings only. Copy this file to config.toml.
+
+# Optional. Leave empty when the account has one blog.
+naver_blog_id = ""
+timezone = "Asia/Seoul"
+
+# Browser stays visible by default because Naver can occasionally require login.
+headless = false
+
+# One Threads post becomes one Naver draft. Replies and reposts are excluded.
+include_replies = false
+include_reposts = false
+max_posts_per_run = 20
+
+# Used only when naver_blog_id is set.
+naver_write_url = "https://blog.naver.com/{blog_id}/postwrite"

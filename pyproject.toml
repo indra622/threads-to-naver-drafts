@@ -1,0 +1,30 @@
+[project]
+name = "threads-to-naver-drafts"
+version = "0.1.0"
+description = "Copy a user's Threads posts verbatim into private Naver Blog drafts."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "keyring>=25.6.0",
+  "playwright>=1.55.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4.0",
+]
+
+[project.scripts]
+threads-to-naver = "threads_to_naver.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/threads_to_naver"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
