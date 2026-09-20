@@ -13,3 +13,10 @@ def test_latest_flag_is_available() -> None:
     args = build_parser().parse_args(["run", "--latest", "--dry-run"])
     assert args.latest is True
     assert args.dry_run is True
+
+
+def test_backfill_limit_is_available() -> None:
+    args = build_parser().parse_args(["backfill", "--limit", "25", "--dry-run"])
+    assert args.command == "backfill"
+    assert args.limit == 25
+    assert args.dry_run is True

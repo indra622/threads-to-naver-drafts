@@ -15,6 +15,8 @@ from .secrets import (
 from .state import StateStore
 from .threads_api import ThreadsAPI
 
+THREADS_EARLIEST_TIMESTAMP = 1_688_540_400
+
 
 def run(
     config: Config,
@@ -33,18 +35,61 @@ def run(
     api = ThreadsAPI(token)
     posts = api.get_posts(start, end)
     _refresh_token_if_due(api, token)
-    posts = [
+    posts = _filter_posts(config, posts)
+    posts = posts[-1:] if latest_only else posts[: config.max_posts_per_run]
+
+    return _create_drafts(
+        config,
+        posts,
+        dry_run=dry_run,
+        dry_run_name=target_date.isoformat(),
+    )
+
+
+def backfill(config: Config, dry_run: bool = False, limit: int | None = None) -> int:
+    """Copy every historical original post, oldest first, with resumable state."""
+    config.ensure_directories()
+    start = datetime.fromtimestamp(THREADS_EARLIEST_TIMESTAMP, config.timezone)
+    end = datetime.now(config.timezone) - timedelta(seconds=5)
+    token = get_threads_token()
+    api = ThreadsAPI(token)
+    posts = _filter_posts(config, api.get_posts(start, end))
+    _refresh_token_if_due(api, token)
+
+    with StateStore(config.state_db) as state:
+        pending = [post for post in posts if not state.contains(post.id)]
+    if limit is not None:
+        pending = pending[:limit]
+
+    return _create_drafts(
+        config,
+        pending,
+        dry_run=dry_run,
+        dry_run_name="backfill",
+    )
+
+
+def _filter_posts(config: Config, posts: list) -> list:
+    return [
         post
         for post in posts
         if (config.include_replies or not post.is_reply)
         and (config.include_reposts or not post.is_repost)
     ]
-    posts = posts[-1:] if latest_only else posts[: config.max_posts_per_run]
+
+
+def _create_drafts(
+    config: Config,
+    posts: list,
+    *,
+    dry_run: bool,
+    dry_run_name: str,
+) -> int:
 
     with StateStore(config.state_db) as state:
         pending = [post for post in posts if not state.contains(post.id)]
         if dry_run:
-            _write_dry_run(config, target_date, pending)
+            _write_dry_run(config, dry_run_name, pending)
             print(f"Dry run: {len(pending)} pending post(s); no Naver browser opened.")
             return len(pending)
 
@@ -64,8 +109,8 @@ def run(
         return created
 
 
-def _write_dry_run(config: Config, target_date: date, posts: list) -> Path:
-    path = config.artifacts_dir / f"dry-run-{target_date.isoformat()}.json"
+def _write_dry_run(config: Config, name: str, posts: list) -> Path:
+    path = config.artifacts_dir / f"dry-run-{name}.json"
     payload = [
         {
             "id": post.id,

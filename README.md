@@ -65,12 +65,25 @@ uv run threads-to-naver run --latest
 
 실패한 게시물은 SQLite에 완료 처리되지 않아 다음 실행에서 다시 시도된다. 실행 화면은 `artifacts/`에 남는다.
 
-## 매일 실행(선택)
-
-기본값은 매일 00:15에 **전날 게시물**을 초안으로 만든다.
+전체 과거 원 게시물을 오래된 순서대로 백필하려면 다음 명령을 사용한다. 성공한 건은 즉시 SQLite에 기록되므로 중단 후 같은 명령으로 안전하게 재개된다.
 
 ```bash
-uv run python scripts/install_launchd.py --hour 0 --minute 15
+uv run threads-to-naver backfill --dry-run
+uv run threads-to-naver backfill
+```
+
+네이버 임시저장 공간과 브라우저 상태를 보며 여러 묶음으로 나눌 때는 `--limit`을 사용한다.
+
+```bash
+uv run threads-to-naver backfill --limit 50
+```
+
+## 매일 실행(선택)
+
+현재 운영 설정은 매일 11:00에 **전날 게시물**을 초안으로 만든다.
+
+```bash
+uv run python scripts/install_launchd.py --hour 11 --minute 0
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.threads-to-naver-drafts.plist
 ```
 

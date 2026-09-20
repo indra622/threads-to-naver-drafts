@@ -8,7 +8,7 @@ from pathlib import Path
 from .config import Config
 from .naver import NaverDraftWriter
 from .secrets import setup_threads_token
-from .service import run
+from .service import backfill, run
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +38,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fetch and render JSON without opening Naver",
     )
+
+    backfill_parser = subparsers.add_parser(
+        "backfill",
+        help="Create drafts for every historical original post",
+    )
+    backfill_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Maximum drafts to create in this resumable batch",
+    )
+    backfill_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch and render JSON without opening Naver",
+    )
     return parser
 
 
@@ -53,6 +68,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "login":
             with NaverDraftWriter(config) as writer:
                 writer.login()
+            return 0
+
+        if args.command == "backfill":
+            if args.limit is not None and args.limit < 1:
+                raise ValueError("--limit must be at least 1")
+            count = backfill(config, dry_run=args.dry_run, limit=args.limit)
+            print(f"Completed: {count} item(s).")
             return 0
 
         target_date = (

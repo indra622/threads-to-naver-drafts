@@ -44,6 +44,12 @@ IMAGE_BUTTON_SELECTORS = (
     'button[aria-label*="사진"]',
     'button:has-text("사진")',
 )
+VIDEO_BUTTON_SELECTORS = (
+    'button[data-name="video"]',
+    'button[aria-label*="동영상"]',
+    'button:has-text("동영상")',
+)
+VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm"}
 
 
 class NaverDraftWriter:
@@ -90,6 +96,7 @@ class NaverDraftWriter:
         if "nidlogin" in page.url or "nid.naver.com" in page.url:
             raise RuntimeError("Naver login expired. Run `threads-to-naver login`.")
 
+        _dismiss_restore_popup(page)
         title = _find_visible(page, TITLE_SELECTORS, "title editor")
         title.click()
         page.keyboard.press("ControlOrMeta+A")
@@ -112,10 +119,13 @@ class NaverDraftWriter:
         self._save_artifact(page, post.id, "saved")
 
     def _upload_media(self, page: Page, paths: list[Path]) -> None:
-        upload_button = _find_visible(
-            page, IMAGE_BUTTON_SELECTORS, "image upload button"
-        )
         for path in paths:
+            is_video = path.suffix.lower() in VIDEO_SUFFIXES
+            upload_button = _find_visible(
+                page,
+                VIDEO_BUTTON_SELECTORS if is_video else IMAGE_BUTTON_SELECTORS,
+                "video upload button" if is_video else "image upload button",
+            )
             with page.expect_file_chooser(timeout=10_000) as chooser_info:
                 upload_button.click()
             chooser_info.value.set_files(str(path))
@@ -237,3 +247,25 @@ def _find_safe_draft_button(page: Page) -> Locator:
         "Could not identify a safe Naver temporary-save control. "
         "No publish control was clicked."
     )
+
+
+def _dismiss_restore_popup(page: Page) -> bool:
+    """Discard only Naver's known autosave-restore prompt, never other dialogs."""
+    for frame in _candidate_frames(page):
+        popups = frame.locator('[data-group="popupLayer"]')
+        for index in range(min(popups.count(), 20)):
+            popup = popups.nth(index)
+            if not popup.is_visible():
+                continue
+            label = " ".join((popup.inner_text() or "").split())
+            if not (
+                label.startswith("작성 중인 글이 있습니다.")
+                and "이어서 작성하시겠습니까?" in label
+            ):
+                continue
+            cancel = popup.get_by_role("button", name="취소", exact=True)
+            if cancel.count() == 1 and cancel.is_visible():
+                cancel.click()
+                popup.wait_for(state="hidden", timeout=10_000)
+                return True
+    return False

@@ -9,8 +9,8 @@ LABEL = "local.threads-to-naver-drafts"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Install the daily launchd job.")
-    parser.add_argument("--hour", type=int, default=0)
-    parser.add_argument("--minute", type=int, default=15)
+    parser.add_argument("--hour", type=int, default=11)
+    parser.add_argument("--minute", type=int, default=0)
     args = parser.parse_args()
     if not 0 <= args.hour <= 23 or not 0 <= args.minute <= 59:
         parser.error("hour/minute out of range")

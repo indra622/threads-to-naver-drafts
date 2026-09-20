@@ -1,6 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
-from threads_to_naver.service import _refresh_token_if_due, run
+from threads_to_naver.models import ThreadPost
+from threads_to_naver.service import (
+    THREADS_EARLIEST_TIMESTAMP,
+    _refresh_token_if_due,
+    backfill,
+    run,
+)
 
 
 def test_latest_query_never_uses_a_future_until(config, monkeypatch) -> None:
@@ -59,3 +65,37 @@ def test_does_not_refresh_fresh_token(monkeypatch) -> None:
     )
 
     _refresh_token_if_due(FakeAPI(), "fresh-token")
+
+
+def test_backfill_uses_full_supported_history_oldest_first(
+    config, monkeypatch
+) -> None:
+    captured = {}
+    posts = [
+        ThreadPost(
+            id=str(index),
+            text=f"post {index}",
+            timestamp=datetime(2023, 7, 6 + index, tzinfo=UTC),
+            permalink=f"https://threads.net/post/{index}",
+            media_type="TEXT_POST",
+        )
+        for index in range(3)
+    ]
+
+    class FakeAPI:
+        def __init__(self, _token: str) -> None:
+            pass
+
+        def get_posts(self, since: datetime, until: datetime) -> list:
+            captured["since"] = since
+            captured["until"] = until
+            return posts
+
+    monkeypatch.setattr("threads_to_naver.service.get_threads_token", lambda: "token")
+    monkeypatch.setattr("threads_to_naver.service.ThreadsAPI", FakeAPI)
+
+    count = backfill(config, dry_run=True, limit=2)
+
+    assert int(captured["since"].timestamp()) == THREADS_EARLIEST_TIMESTAMP
+    assert captured["until"] <= datetime.now(config.timezone)
+    assert count == 2
