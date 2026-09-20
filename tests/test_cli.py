@@ -29,3 +29,12 @@ def test_append_footer_limit_is_available() -> None:
     assert args.command == "append-footer"
     assert args.limit == 10
     assert args.dry_run is True
+
+
+def test_retitle_series_limit_is_available() -> None:
+    args = build_parser().parse_args(
+        ["retitle-series", "--limit", "10", "--dry-run"]
+    )
+    assert args.command == "retitle-series"
+    assert args.limit == 10
+    assert args.dry_run is True

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -59,6 +59,7 @@ SAFE_DRAFT_COUNT_LIMIT = 98
 @dataclass(frozen=True)
 class TempDraft:
     log_no: str
+    title: str = ""
 
 
 class NaverDraftWriter:
@@ -106,11 +107,12 @@ class NaverDraftWriter:
                 f"Naver has {draft_count} temporary drafts. "
                 "Review or publish some drafts before resuming; no new draft was created."
             )
+        post_title = post.title_for_timezone(self._config.timezone)
         title = _find_visible(page, TITLE_SELECTORS, "title editor")
         title.click()
         page.keyboard.press("ControlOrMeta+A")
         page.keyboard.press("Backspace")
-        page.keyboard.insert_text(post.title)
+        page.keyboard.insert_text(post_title)
 
         body = _find_visible(page, BODY_SELECTORS, "body editor")
         body.click()
@@ -120,7 +122,7 @@ class NaverDraftWriter:
 
         paths = list(media_paths)
         if paths:
-            self._upload_media(page, paths, post.title)
+            self._upload_media(page, paths, post_title)
         self._append_configured_footer(page)
 
         draft_button = _find_safe_draft_button(page)
@@ -132,6 +134,43 @@ class NaverDraftWriter:
         page = self._prepare_editor()
         drafts, _ = self._open_temp_draft_list(page)
         return drafts
+
+    def retitle_temp_draft(
+        self,
+        log_no: str,
+        expected_title: str,
+        title_for_body: Callable[[str], str],
+        *,
+        save_artifact: bool = False,
+    ) -> str:
+        page = self._prepare_editor()
+        self._load_temp_draft(page, log_no)
+        title = _find_visible(page, TITLE_SELECTORS, "loaded temporary-draft title")
+        current_title = " ".join((title.inner_text() or "").split())
+        if current_title != expected_title:
+            raise RuntimeError(
+                f"Naver draft {log_no} title changed before update; no draft was saved."
+            )
+        new_title = title_for_body(_editor_text_body_text(page))
+        if not new_title or new_title == current_title:
+            raise RuntimeError(
+                f"Naver draft {log_no} did not resolve to a distinct dated title."
+            )
+
+        title.click()
+        page.keyboard.press("ControlOrMeta+A")
+        page.keyboard.press("Backspace")
+        page.keyboard.insert_text(new_title)
+        draft_button = _find_safe_draft_button(page)
+        draft_button.click()
+        page.wait_for_timeout(5_000)
+
+        saved_title = " ".join((title.inner_text() or "").split())
+        if saved_title != new_title:
+            raise RuntimeError(f"Naver draft {log_no} did not retain its dated title.")
+        if save_artifact:
+            self._save_artifact(page, log_no, "retitled")
+        return new_title
 
     def append_footer_to_temp_draft(
         self,
@@ -260,7 +299,10 @@ class NaverDraftWriter:
             count_button.click()
         result = response_info.value.json().get("result", {})
         drafts = [
-            TempDraft(log_no=str(item["logNo"]))
+            TempDraft(
+                log_no=str(item["logNo"]),
+                title=" ".join(str(item.get("title") or "").split()),
+            )
             for item in result.get("tempPostList", [])
         ]
         buttons = _find_temp_draft_buttons(page, len(drafts))

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, tzinfo
+
+DATED_SERIES_TITLE = "직접 쓰는 AI교양"
 
 
 @dataclass(frozen=True)
@@ -23,11 +25,24 @@ class ThreadPost:
     media: tuple[Media, ...] = field(default_factory=tuple)
 
     @property
-    def title(self) -> str:
-        """Return a mechanical title without rewriting the source text."""
-        first_nonempty = next(
+    def source_title(self) -> str:
+        return next(
             (line.strip() for line in self.text.splitlines() if line.strip()), ""
         )
+
+    def title_for_timezone(self, timezone: tzinfo) -> str:
+        """Return a mechanical title without rewriting the source text."""
+        first_nonempty = self.source_title
         if first_nonempty:
+            if first_nonempty == DATED_SERIES_TITLE:
+                local_date = self.timestamp.astimezone(timezone)
+                return f"{first_nonempty} – {local_date:%Y.%m.%d}"
             return first_nonempty[:100]
         return f"Threads {self.timestamp:%Y-%m-%d %H:%M} ({self.id})"
+
+    @property
+    def title(self) -> str:
+        timezone = self.timestamp.tzinfo
+        if timezone is None:
+            raise ValueError("ThreadPost.timestamp must include a timezone.")
+        return self.title_for_timezone(timezone)

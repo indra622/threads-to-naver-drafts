@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from pathlib import Path
 
 from .config import Config
 from .media import download_media
+from .models import DATED_SERIES_TITLE, ThreadPost
 from .naver import NaverDraftWriter
 from .secrets import (
     get_threads_token,
@@ -116,6 +118,99 @@ def append_footer_to_temp_drafts(
         return handled
 
 
+def retitle_dated_series_temp_drafts(
+    config: Config,
+    *,
+    dry_run: bool = False,
+    limit: int | None = None,
+) -> int:
+    config.ensure_directories()
+    with NaverDraftWriter(config) as writer:
+        targets = [
+            draft
+            for draft in writer.list_temp_drafts()
+            if draft.title == DATED_SERIES_TITLE
+        ]
+        if limit is not None:
+            targets = targets[:limit]
+        if dry_run:
+            print(
+                f"Series-title dry run: {len(targets)} temporary draft(s) "
+                "need an original-date suffix; nothing changed."
+            )
+            return len(targets)
+        if not targets:
+            print("No temporary drafts need a dated series title.")
+            return 0
+
+        start = datetime.fromtimestamp(THREADS_EARLIEST_TIMESTAMP, config.timezone)
+        end = datetime.now(config.timezone) - timedelta(seconds=5)
+        token = get_threads_token()
+        api = ThreadsAPI(token)
+        posts = [
+            post
+            for post in _filter_posts(config, api.get_posts(start, end))
+            if post.source_title == DATED_SERIES_TITLE
+        ]
+        _refresh_token_if_due(api, token)
+
+        handled = 0
+        for draft in targets:
+            new_title = writer.retitle_temp_draft(
+                draft.log_no,
+                DATED_SERIES_TITLE,
+                lambda body, candidates=posts: _dated_title_for_body(
+                    body,
+                    candidates,
+                    config,
+                ),
+                save_artifact=handled == 0,
+            )
+            handled += 1
+            print(f"Retitled Naver temporary draft {draft.log_no}: {new_title}")
+        return handled
+
+
+def _dated_title_for_body(body: str, posts: list[ThreadPost], config: Config) -> str:
+    normalized_body = _normalize_text(_without_footer_url(body, config.footer_url))
+    matches = [
+        post
+        for post in posts
+        if (
+            normalized_source := _normalize_text(
+                _without_footer_url(post.text, config.footer_url)
+            )
+        )
+        and normalized_source in normalized_body
+    ]
+    if not matches:
+        raise RuntimeError(
+            "Could not match a Naver series draft to its original Threads post."
+        )
+    normalized_matches = [
+        (
+            post,
+            _normalize_text(_without_footer_url(post.text, config.footer_url)),
+        )
+        for post in matches
+    ]
+    longest = max(len(source) for _, source in normalized_matches)
+    best = [post for post, source in normalized_matches if len(source) == longest]
+    if len(best) != 1:
+        raise RuntimeError(
+            "A Naver series draft matched multiple Threads posts; no title was changed."
+        )
+    return best[0].title_for_timezone(config.timezone)
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", "", text)
+
+
+def _without_footer_url(text: str, footer_url: str) -> str:
+    return text.replace(footer_url, "") if footer_url else text
+
+
 def _footer_signature(url: str, image_path: Path) -> str:
     digest = sha256()
     digest.update(url.encode("utf-8"))
@@ -157,12 +252,13 @@ def _create_drafts(
         created = 0
         with NaverDraftWriter(config) as writer:
             for post in pending:
+                title = post.title_for_timezone(config.timezone)
                 media_dir = config.artifacts_dir / "media" / post.id
                 media_paths = download_media(post, media_dir) if post.media else []
                 writer.create_draft(post, media_paths)
-                state.mark_drafted(post.id, post.permalink, post.timestamp, post.title)
+                state.mark_drafted(post.id, post.permalink, post.timestamp, title)
                 created += 1
-                print(f"Drafted Threads post {post.id}: {post.title}")
+                print(f"Drafted Threads post {post.id}: {title}")
         return created
 
 
@@ -171,7 +267,7 @@ def _write_dry_run(config: Config, name: str, posts: list) -> Path:
     payload = [
         {
             "id": post.id,
-            "title": post.title,
+            "title": post.title_for_timezone(config.timezone),
             "text": post.text,
             "timestamp": post.timestamp.isoformat(),
             "permalink": post.permalink,
