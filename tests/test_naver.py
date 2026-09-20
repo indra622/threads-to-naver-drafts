@@ -5,6 +5,7 @@ from playwright.sync_api import sync_playwright
 from threads_to_naver.naver import (
     _current_draft_count,
     _dismiss_restore_popup,
+    _editor_text_body_text,
     _find_last_visible_text_paragraph,
     _insert_text_link_at_cursor,
     _insert_verbatim,
@@ -197,4 +198,18 @@ def test_footer_uses_last_nonempty_body_paragraph() -> None:
         paragraph = _find_last_visible_text_paragraph(page)
 
         assert paragraph.inner_text() == "본문 끝"
+        browser.close()
+
+
+def test_empty_text_body_ignores_title_and_video_metadata() -> None:
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(
+            '<div class="se-documentTitle">제목</div>'
+            '<div class="se-video">영상 제목</div>'
+            '<div class="se-section-text"><p class="se-text-paragraph"></p></div>'
+        )
+
+        assert _editor_text_body_text(page).strip() == ""
         browser.close()

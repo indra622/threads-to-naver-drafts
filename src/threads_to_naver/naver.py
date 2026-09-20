@@ -217,11 +217,15 @@ class NaverDraftWriter:
         if not footer_image_path.is_file():
             raise FileNotFoundError(f"Missing footer image: {footer_image_path}")
         paragraph = _find_last_visible_text_paragraph(page)
-        _place_caret_at_end(paragraph)
-        if _editor_body_text(page).strip():
+        if _editor_text_body_text(page).strip():
+            _place_caret_at_end(paragraph)
             page.keyboard.press("Shift+Enter")
             page.keyboard.press("Shift+Enter")
-        _insert_text_link_at_cursor(page, footer_url)
+            _insert_text_link_at_cursor(page, footer_url)
+        else:
+            paragraph.click()
+            page.keyboard.insert_text(footer_url)
+            _make_text_link(page, footer_url)
         paragraph = _find_paragraph_containing(page, footer_url)
         _place_caret_at_end(paragraph)
         page.keyboard.press("Shift+Enter")
@@ -456,6 +460,17 @@ def _editor_body_text(page: Page) -> str:
             component = components.nth(index)
             if component.is_visible():
                 parts.append(component.inner_text() or "")
+    return "\n".join(parts)
+
+
+def _editor_text_body_text(page: Page) -> str:
+    parts: list[str] = []
+    for frame in _candidate_frames(page):
+        sections = frame.locator(".se-section-text")
+        for index in range(min(sections.count(), 100)):
+            section = sections.nth(index)
+            if section.is_visible():
+                parts.append(section.inner_text() or "")
     return "\n".join(parts)
 
 
