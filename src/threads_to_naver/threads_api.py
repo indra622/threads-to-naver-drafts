@@ -37,6 +37,19 @@ class ThreadsAPI:
             next_url = payload.get("paging", {}).get("next")
         return sorted(posts, key=lambda post: post.timestamp)
 
+    def refresh_long_lived_token(self) -> str:
+        params = {
+            "grant_type": "th_refresh_token",
+            "access_token": self._access_token,
+        }
+        payload = self._get_json(
+            f"{API_BASE}/refresh_access_token?{urllib.parse.urlencode(params)}"
+        )
+        token = str(payload.get("access_token") or "")
+        if not token:
+            raise RuntimeError("Threads token refresh returned no access token.")
+        return token
+
     def _get_json(self, url: str) -> dict[str, Any]:
         request = urllib.request.Request(
             url,

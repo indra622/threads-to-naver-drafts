@@ -1,9 +1,27 @@
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import keyring
 import pytest
 
 from threads_to_naver.config import Config
+
+
+@pytest.fixture(autouse=True)
+def isolated_keyring(monkeypatch):
+    """Never allow tests to read or write the user's real macOS Keychain."""
+    stored = {}
+    monkeypatch.setattr(
+        keyring,
+        "get_password",
+        lambda service, username: stored.get((service, username)),
+    )
+    monkeypatch.setattr(
+        keyring,
+        "set_password",
+        lambda service, username, value: stored.__setitem__((service, username), value),
+    )
+    return stored
 
 
 @pytest.fixture

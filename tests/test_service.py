@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
-from threads_to_naver.service import run
+from threads_to_naver.service import _refresh_token_if_due, run
 
 
 def test_latest_query_never_uses_a_future_until(config, monkeypatch) -> None:
@@ -22,3 +22,40 @@ def test_latest_query_never_uses_a_future_until(config, monkeypatch) -> None:
 
     assert captured["until"] <= datetime.now(config.timezone)
     assert captured["until"] - captured["since"] == timedelta(days=30)
+
+
+def test_refreshes_token_after_one_day(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    saved = []
+
+    class FakeAPI:
+        def refresh_long_lived_token(self) -> str:
+            return "refreshed-token"
+
+    monkeypatch.setattr(
+        "threads_to_naver.service.get_threads_token_saved_at",
+        lambda: now - timedelta(days=2),
+    )
+    monkeypatch.setattr(
+        "threads_to_naver.service.save_threads_token",
+        lambda token, saved_at: saved.append((token, saved_at)),
+    )
+
+    _refresh_token_if_due(FakeAPI(), "old-token")
+
+    assert saved[0][0] == "refreshed-token"
+
+
+def test_does_not_refresh_fresh_token(monkeypatch) -> None:
+    now = datetime.now(UTC)
+
+    class FakeAPI:
+        def refresh_long_lived_token(self) -> str:
+            raise AssertionError("fresh token must not be refreshed")
+
+    monkeypatch.setattr(
+        "threads_to_naver.service.get_threads_token_saved_at",
+        lambda: now,
+    )
+
+    _refresh_token_if_due(FakeAPI(), "fresh-token")

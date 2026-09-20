@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 APP_NAME = "threads-to-naver"
 KEYRING_SERVICE = "threads-to-naver-drafts"
 KEYRING_USERNAME = "threads-access-token"
+KEYRING_SAVED_AT_USERNAME = "threads-access-token-saved-at"
 
 
 @dataclass(frozen=True)

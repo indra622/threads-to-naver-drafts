@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 from .config import Config
 from .media import download_media
 from .naver import NaverDraftWriter
-from .secrets import get_threads_token
+from .secrets import (
+    get_threads_token,
+    get_threads_token_saved_at,
+    save_threads_token,
+)
 from .state import StateStore
 from .threads_api import ThreadsAPI
 
@@ -25,7 +29,10 @@ def run(
     else:
         start = datetime.combine(target_date, time.min, config.timezone)
         end = start + timedelta(days=1)
-    posts = ThreadsAPI(get_threads_token()).get_posts(start, end)
+    token = get_threads_token()
+    api = ThreadsAPI(token)
+    posts = api.get_posts(start, end)
+    _refresh_token_if_due(api, token)
     posts = [
         post
         for post in posts
@@ -72,3 +79,14 @@ def _write_dry_run(config: Config, target_date: date, posts: list) -> Path:
     ]
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+def _refresh_token_if_due(api: ThreadsAPI, token: str) -> None:
+    saved_at = get_threads_token_saved_at()
+    now = datetime.now(UTC)
+    if saved_at is None:
+        save_threads_token(token, now)
+        return
+    if now - saved_at < timedelta(days=1):
+        return
+    save_threads_token(api.refresh_long_lived_token(), now)
