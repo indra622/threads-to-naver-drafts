@@ -20,3 +20,12 @@ def test_backfill_limit_is_available() -> None:
     assert args.command == "backfill"
     assert args.limit == 25
     assert args.dry_run is True
+
+
+def test_append_footer_limit_is_available() -> None:
+    args = build_parser().parse_args(
+        ["append-footer", "--limit", "10", "--dry-run"]
+    )
+    assert args.command == "append-footer"
+    assert args.limit == 10
+    assert args.dry_run is True

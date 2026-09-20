@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Self
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import (
     BrowserContext,
@@ -54,6 +56,11 @@ VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm"}
 SAFE_DRAFT_COUNT_LIMIT = 98
 
 
+@dataclass(frozen=True)
+class TempDraft:
+    log_no: str
+
+
 class NaverDraftWriter:
     def __init__(self, config: Config) -> None:
         self._config = config
@@ -92,13 +99,7 @@ class NaverDraftWriter:
         raise RuntimeError("Timed out waiting for Naver login.")
 
     def create_draft(self, post: ThreadPost, media_paths: Iterable[Path]) -> None:
-        page = self._open_editor()
-        page.wait_for_timeout(3_000)
-
-        if "nidlogin" in page.url or "nid.naver.com" in page.url:
-            raise RuntimeError("Naver login expired. Run `threads-to-naver login`.")
-
-        _dismiss_restore_popup(page)
+        page = self._prepare_editor()
         draft_count = _current_draft_count(page)
         if draft_count is not None and draft_count >= SAFE_DRAFT_COUNT_LIMIT:
             raise RuntimeError(
@@ -120,11 +121,66 @@ class NaverDraftWriter:
         paths = list(media_paths)
         if paths:
             self._upload_media(page, paths, post.title)
+        self._append_configured_footer(page)
 
         draft_button = _find_safe_draft_button(page)
         draft_button.click()
         page.wait_for_timeout(5_000)
         self._save_artifact(page, post.id, "saved")
+
+    def list_temp_drafts(self) -> list[TempDraft]:
+        page = self._prepare_editor()
+        drafts, _ = self._open_temp_draft_list(page)
+        return drafts
+
+    def append_footer_to_temp_draft(
+        self,
+        log_no: str,
+        footer_url: str,
+        footer_image_path: Path,
+        *,
+        save_artifact: bool = False,
+    ) -> bool:
+        page = self._prepare_editor()
+        self._load_temp_draft(page, log_no)
+        footer_text_exists = footer_url in _editor_body_text(page)
+        footer_link_exists = _footer_link_count(page, footer_url) > 0
+        if footer_text_exists and footer_link_exists:
+            return False
+        if footer_text_exists:
+            _make_text_link(page, footer_url)
+            draft_button = _find_safe_draft_button(page)
+            draft_button.click()
+            page.wait_for_timeout(5_000)
+            if _footer_link_count(page, footer_url) == 0:
+                raise RuntimeError(
+                    f"Naver draft {log_no} did not retain the clickable footer link."
+                )
+            if save_artifact:
+                self._save_artifact(page, log_no, "footer-saved")
+            return True
+
+        before_images = _visible_image_count(page)
+        self._append_footer(page, footer_url, footer_image_path)
+        draft_button = _find_safe_draft_button(page)
+        draft_button.click()
+        page.wait_for_timeout(5_000)
+
+        if footer_url not in _editor_body_text(page):
+            raise RuntimeError(
+                f"Naver draft {log_no} did not retain the configured footer URL."
+            )
+        if _footer_link_count(page, footer_url) == 0:
+            raise RuntimeError(
+                f"Naver draft {log_no} did not retain the clickable footer link."
+            )
+        if _visible_image_count(page) <= before_images:
+            raise RuntimeError(
+                f"Naver draft {log_no} did not retain the configured footer image."
+            )
+        if save_artifact:
+            self._save_artifact(page, log_no, "footer-saved")
+        return True
 
     def _upload_media(self, page: Page, paths: list[Path], post_title: str) -> None:
         for path in paths:
@@ -141,6 +197,88 @@ class NaverDraftWriter:
                 upload_button.click()
             chooser_info.value.set_files(str(path))
             page.wait_for_timeout(2_000)
+
+    def _append_configured_footer(self, page: Page) -> None:
+        if not self._config.footer_url and self._config.footer_image_path is None:
+            return
+        if not self._config.footer_url or self._config.footer_image_path is None:
+            raise RuntimeError(
+                "Configure both footer_url and footer_image_path, or leave both empty."
+            )
+        self._append_footer(
+            page,
+            self._config.footer_url,
+            self._config.footer_image_path,
+        )
+
+    def _append_footer(
+        self, page: Page, footer_url: str, footer_image_path: Path
+    ) -> None:
+        if not footer_image_path.is_file():
+            raise FileNotFoundError(f"Missing footer image: {footer_image_path}")
+        paragraph = _find_last_visible_text_paragraph(page)
+        _place_caret_at_end(paragraph)
+        if _editor_body_text(page).strip():
+            page.keyboard.press("Shift+Enter")
+            page.keyboard.press("Shift+Enter")
+        page.keyboard.insert_text(footer_url)
+        _make_text_link(page, footer_url)
+        paragraph = _find_paragraph_containing(page, footer_url)
+        _place_caret_at_end(paragraph)
+        page.keyboard.press("Shift+Enter")
+        self._upload_media(page, [footer_image_path], "footer")
+
+    def _prepare_editor(self) -> Page:
+        page = self._open_editor()
+        page.wait_for_timeout(3_000)
+        if "nidlogin" in page.url or "nid.naver.com" in page.url:
+            raise RuntimeError("Naver login expired. Run `threads-to-naver login`.")
+        _dismiss_restore_popup(page)
+        return page
+
+    def _open_temp_draft_list(
+        self, page: Page
+    ) -> tuple[list[TempDraft], Locator]:
+        count_button = _find_visible(
+            page,
+            ('button[aria-label^="임시저장된 글 보기"]',),
+            "temporary-draft list button",
+        )
+        with page.expect_response(
+            lambda response: urlsplit(response.url).path.endswith(
+                "/TempPostList.naver"
+            ),
+            timeout=15_000,
+        ) as response_info:
+            count_button.click()
+        result = response_info.value.json().get("result", {})
+        drafts = [
+            TempDraft(log_no=str(item["logNo"]))
+            for item in result.get("tempPostList", [])
+        ]
+        buttons = _find_temp_draft_buttons(page, len(drafts))
+        if buttons is None:
+            raise RuntimeError(
+                "Naver temporary-draft list did not match its visible controls."
+            )
+        return drafts, buttons
+
+    def _load_temp_draft(self, page: Page, log_no: str) -> None:
+        drafts, buttons = self._open_temp_draft_list(page)
+        try:
+            index = next(
+                index for index, draft in enumerate(drafts) if draft.log_no == log_no
+            )
+        except StopIteration as error:
+            raise RuntimeError(f"Naver temporary draft {log_no} no longer exists.") from error
+
+        with page.expect_response(
+            lambda response: _is_temp_draft_read_response(response.url, log_no),
+            timeout=15_000,
+        ):
+            buttons.nth(index).click()
+        page.wait_for_timeout(2_000)
+        _find_visible(page, TITLE_SELECTORS, "loaded temporary-draft title")
 
     def _open_editor(self) -> Page:
         page = self._new_page()
@@ -294,6 +432,128 @@ def _current_draft_count(page: Page) -> int | None:
             if match:
                 return int(match.group(1))
     return None
+
+
+def _find_temp_draft_buttons(page: Page, expected_count: int) -> Locator | None:
+    for frame in _candidate_frames(page):
+        buttons = frame.locator('button[data-click-area="tpb*s.tlist"]')
+        if buttons.count() == expected_count:
+            return buttons
+    return None
+
+
+def _is_temp_draft_read_response(url: str, log_no: str) -> bool:
+    parsed = urlsplit(url)
+    return parsed.path.endswith("/RabbitTempPostRead.naver") and (
+        parse_qs(parsed.query).get("logNo") == [log_no]
+    )
+
+
+def _editor_body_text(page: Page) -> str:
+    parts: list[str] = []
+    for frame in _candidate_frames(page):
+        components = frame.locator(".se-component-content")
+        for index in range(min(components.count(), 100)):
+            component = components.nth(index)
+            if component.is_visible():
+                parts.append(component.inner_text() or "")
+    return "\n".join(parts)
+
+
+def _find_paragraph_containing(page: Page, text: str) -> Locator:
+    match: Locator | None = None
+    for frame in _candidate_frames(page):
+        paragraphs = frame.locator(".se-text-paragraph")
+        for index in range(min(paragraphs.count(), 500)):
+            paragraph = paragraphs.nth(index)
+            if paragraph.is_visible() and text in (paragraph.inner_text() or ""):
+                match = paragraph
+    if match is None:
+        raise RuntimeError("Could not find the inserted Naver footer text.")
+    return match
+
+
+def _make_text_link(page: Page, url: str) -> None:
+    paragraph = _find_paragraph_containing(page, url)
+    paragraph.click()
+    page.keyboard.press("End")
+    for _ in url:
+        page.keyboard.press("Shift+ArrowLeft")
+
+    toolbar_button = _find_visible(
+        page,
+        ('button[data-name="text-link"]',),
+        "text-link toolbar button",
+    )
+    toolbar_button.click()
+    url_input = _find_visible(
+        page,
+        ('input[placeholder="URL을 입력하세요."]',),
+        "text-link URL input",
+    )
+    url_input.fill(url)
+    apply_button = _find_visible(
+        page,
+        ("button.se-custom-layer-link-apply-button",),
+        "text-link apply button",
+    )
+    apply_button.click()
+    page.wait_for_timeout(500)
+    if _footer_link_count(page, url) == 0:
+        raise RuntimeError("Naver did not create a clickable footer link.")
+
+
+def _footer_link_count(page: Page, url: str) -> int:
+    count = 0
+    for frame in _candidate_frames(page):
+        links = frame.locator(".se-component-content a, .se-component-content .se-link")
+        for index in range(min(links.count(), 500)):
+            link = links.nth(index)
+            target = link.get_attribute("href") or link.get_attribute("data-href")
+            if target == url:
+                count += 1
+    return count
+
+
+def _find_last_visible_text_paragraph(page: Page) -> Locator:
+    visible: list[Locator] = []
+    for frame in _candidate_frames(page):
+        paragraphs = frame.locator(".se-text-paragraph")
+        for index in range(min(paragraphs.count(), 500)):
+            paragraph = paragraphs.nth(index)
+            if paragraph.is_visible():
+                visible.append(paragraph)
+    if not visible:
+        raise RuntimeError("Could not find the end of the Naver draft body.")
+    return visible[-1]
+
+
+def _place_caret_at_end(paragraph: Locator) -> None:
+    paragraph.scroll_into_view_if_needed()
+    paragraph.click()
+    paragraph.evaluate(
+        """
+        element => {
+          const range = element.ownerDocument.createRange();
+          range.selectNodeContents(element);
+          range.collapse(false);
+          const selection = element.ownerDocument.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+        """
+    )
+
+
+def _visible_image_count(page: Page) -> int:
+    count = 0
+    for frame in _candidate_frames(page):
+        images = frame.locator(".se-component-content img")
+        count += sum(
+            images.nth(index).is_visible()
+            for index in range(min(images.count(), 500))
+        )
+    return count
 
 
 def _upload_video(page: Page, path: Path, title: str) -> None:

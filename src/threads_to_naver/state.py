@@ -21,6 +21,16 @@ class StateStore:
             )
             """
         )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS footer_updates (
+                naver_log_no TEXT NOT NULL,
+                footer_signature TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (naver_log_no, footer_signature)
+            )
+            """
+        )
         self._connection.commit()
 
     def contains(self, post_id: str) -> bool:
@@ -45,6 +55,27 @@ class StateStore:
                 datetime.now(UTC).isoformat(),
                 title,
             ),
+        )
+        self._connection.commit()
+
+    def contains_footer(self, log_no: str, signature: str) -> bool:
+        row = self._connection.execute(
+            """
+            SELECT 1 FROM footer_updates
+            WHERE naver_log_no = ? AND footer_signature = ?
+            """,
+            (log_no, signature),
+        ).fetchone()
+        return row is not None
+
+    def mark_footer_updated(self, log_no: str, signature: str) -> None:
+        self._connection.execute(
+            """
+            INSERT OR IGNORE INTO footer_updates (
+                naver_log_no, footer_signature, updated_at
+            ) VALUES (?, ?, ?)
+            """,
+            (log_no, signature, datetime.now(UTC).isoformat()),
         )
         self._connection.commit()
 

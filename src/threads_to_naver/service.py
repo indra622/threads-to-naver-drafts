@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, date, datetime, time, timedelta
+from hashlib import sha256
 from pathlib import Path
 
 from .config import Config
@@ -67,6 +68,62 @@ def backfill(config: Config, dry_run: bool = False, limit: int | None = None) ->
         dry_run=dry_run,
         dry_run_name="backfill",
     )
+
+
+def append_footer_to_temp_drafts(
+    config: Config,
+    *,
+    dry_run: bool = False,
+    limit: int | None = None,
+) -> int:
+    config.ensure_directories()
+    if not config.footer_url or config.footer_image_path is None:
+        raise RuntimeError(
+            "Configure both footer_url and footer_image_path before appending footers."
+        )
+    if not config.footer_image_path.is_file():
+        raise FileNotFoundError(f"Missing footer image: {config.footer_image_path}")
+
+    signature = _footer_signature(config.footer_url, config.footer_image_path)
+    with StateStore(config.state_db) as state, NaverDraftWriter(config) as writer:
+        drafts = writer.list_temp_drafts()
+        pending = [
+            draft
+            for draft in drafts
+            if not state.contains_footer(draft.log_no, signature)
+        ]
+        if limit is not None:
+            pending = pending[:limit]
+        if dry_run:
+            print(
+                f"Footer dry run: {len(pending)} pending of {len(drafts)} "
+                "temporary draft(s); nothing changed."
+            )
+            return len(pending)
+
+        handled = 0
+        for draft in pending:
+            changed = writer.append_footer_to_temp_draft(
+                draft.log_no,
+                config.footer_url,
+                config.footer_image_path,
+                save_artifact=handled == 0,
+            )
+            state.mark_footer_updated(draft.log_no, signature)
+            handled += 1
+            action = "Updated" if changed else "Already contained footer"
+            print(f"{action}: Naver temporary draft {draft.log_no}")
+        return handled
+
+
+def _footer_signature(url: str, image_path: Path) -> str:
+    digest = sha256()
+    digest.update(url.encode("utf-8"))
+    digest.update(b"\0")
+    with image_path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _filter_posts(config: Config, posts: list) -> list:

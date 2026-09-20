@@ -14,3 +14,8 @@ max_posts_per_run = 20
 
 # Used only when naver_blog_id is set.
 naver_write_url = "https://blog.naver.com/{blog_id}/postwrite"
+
+# Optional footer appended after the Threads body and source media.
+# Change the URL or point to another local image whenever needed.
+footer_url = "https://naver.me/5qLhk2hv"
+footer_image_path = "assets/brand-connect-guide.png"

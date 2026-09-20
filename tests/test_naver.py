@@ -7,6 +7,7 @@ from threads_to_naver.naver import (
     _dismiss_restore_popup,
     _insert_verbatim,
     _is_safe_draft_label,
+    _make_text_link,
     _upload_video,
 )
 
@@ -125,4 +126,29 @@ def test_current_draft_count_uses_accessible_label() -> None:
             '<button aria-label="임시저장된 글 보기, 98개">98</button>'
         )
         assert _current_draft_count(page) == 98
+        browser.close()
+
+
+def test_footer_url_is_converted_to_clickable_link() -> None:
+    url = "https://naver.me/example"
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(
+            '<div class="se-component-content" contenteditable="true">'
+            f'<p class="se-text-paragraph"><span>{url}</span></p></div>'
+            '<button data-name="text-link" '
+            "onclick=\"window.savedRange=getSelection().getRangeAt(0).cloneRange();"
+            "document.querySelector('#link-box').style.display='block'\">링크</button>"
+            '<div id="link-box" style="display:none">'
+            '<input placeholder="URL을 입력하세요.">'
+            '<button class="se-custom-layer-link-apply-button" '
+            "onclick=\"const s=getSelection();s.removeAllRanges();"
+            "s.addRange(window.savedRange);document.execCommand('createLink',false,"
+            "document.querySelector('#link-box input').value)\">적용</button></div>"
+        )
+
+        _make_text_link(page, url)
+
+        assert page.locator(f'a[href="{url}"]').count() == 1
         browser.close()

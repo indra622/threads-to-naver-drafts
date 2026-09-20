@@ -21,6 +21,8 @@ class Config:
     include_reposts: bool
     max_posts_per_run: int
     naver_write_url: str
+    footer_url: str
+    footer_image_path: Path | None
     data_dir: Path
     profile_dir: Path
     artifacts_dir: Path
@@ -38,6 +40,12 @@ class Config:
             raw = tomllib.load(file)
 
         data_dir = Path.home() / ".local" / "share" / APP_NAME
+        footer_image_value = str(raw.get("footer_image_path", "")).strip()
+        footer_image_path = (
+            (path.parent / footer_image_value).resolve()
+            if footer_image_value
+            else None
+        )
         return cls(
             project_dir=project_dir,
             naver_blog_id=str(raw.get("naver_blog_id", "")).strip(),
@@ -52,6 +60,8 @@ class Config:
                     "https://blog.naver.com/{blog_id}/postwrite",
                 )
             ),
+            footer_url=str(raw.get("footer_url", "")).strip(),
+            footer_image_path=footer_image_path,
             data_dir=data_dir,
             profile_dir=data_dir / "browser-profile",
             artifacts_dir=project_dir / "artifacts",

@@ -7,6 +7,7 @@
 - 게시물 1개를 네이버 초안 1개로 저장합니다.
 - 답글과 리포스트는 기본적으로 제외합니다.
 - 이미지, 캐러셀, 동영상을 함께 옮깁니다.
+- 설정한 footer 링크와 이미지를 모든 새 초안의 맨 아래에 추가할 수 있습니다.
 - SQLite로 처리 이력을 관리해 중단 후 재개해도 중복 초안을 만들지 않습니다.
 
 > 네이버는 현재 공식 블로그 글쓰기 API를 제공하지 않으므로 Playwright로 SmartEditor 화면을 조작합니다. 네이버 UI가 바뀌면 선택자 보정이 필요할 수 있습니다.
@@ -51,9 +52,12 @@ include_replies = false
 include_reposts = false
 max_posts_per_run = 20
 naver_write_url = "https://blog.naver.com/{blog_id}/postwrite"
+footer_url = "https://naver.me/5qLhk2hv"
+footer_image_path = "assets/brand-connect-guide.png"
 ```
 
 블로그가 여러 개라면 `naver_blog_id`와 해당 블로그의 글쓰기 URL을 설정하세요.
+footer를 바꾸려면 `footer_url`과 `footer_image_path`를 수정하세요. 두 값을 모두 비우면 footer를 추가하지 않습니다.
 
 ## 로컬 인증 설정
 
@@ -124,6 +128,18 @@ uv run threads-to-naver backfill
 ```bash
 uv run threads-to-naver backfill --limit 50
 ```
+
+### 4. 기존 임시저장 글에 footer 추가
+
+현재 네이버 임시저장 글의 맨 아래에 설정된 링크와 이미지를 추가합니다. 네이버 초안 고유 ID와 footer 서명을 SQLite에 기록하므로 중단 후 재개해도 중복 추가하지 않습니다.
+
+```bash
+uv run threads-to-naver append-footer --dry-run
+uv run threads-to-naver append-footer --limit 10
+uv run threads-to-naver append-footer
+```
+
+링크와 이미지를 바꿀 때는 `config.toml`의 `footer_url`과 `footer_image_path`를 변경하세요. 이후 새로 생성되는 초안에는 변경된 footer가 적용됩니다.
 
 ## 매일 오전 11시 실행
 

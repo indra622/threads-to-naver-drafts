@@ -8,7 +8,7 @@ from pathlib import Path
 from .config import Config
 from .naver import NaverDraftWriter
 from .secrets import setup_threads_token
-from .service import backfill, run
+from .service import append_footer_to_temp_drafts, backfill, run
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,6 +53,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fetch and render JSON without opening Naver",
     )
+
+    footer_parser = subparsers.add_parser(
+        "append-footer",
+        help="Append the configured URL and image to existing temporary drafts",
+    )
+    footer_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Maximum temporary drafts to update in this resumable batch",
+    )
+    footer_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List the pending count without changing Naver drafts",
+    )
     return parser
 
 
@@ -74,6 +89,18 @@ def main(argv: list[str] | None = None) -> int:
             if args.limit is not None and args.limit < 1:
                 raise ValueError("--limit must be at least 1")
             count = backfill(config, dry_run=args.dry_run, limit=args.limit)
+            print(f"Completed: {count} item(s).")
+            return 0
+
+
+        if args.command == "append-footer":
+            if args.limit is not None and args.limit < 1:
+                raise ValueError("--limit must be at least 1")
+            count = append_footer_to_temp_drafts(
+                config,
+                dry_run=args.dry_run,
+                limit=args.limit,
+            )
             print(f"Completed: {count} item(s).")
             return 0
 

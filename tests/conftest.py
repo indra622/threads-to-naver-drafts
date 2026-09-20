@@ -36,6 +36,8 @@ def config(tmp_path: Path) -> Config:
         include_reposts=False,
         max_posts_per_run=20,
         naver_write_url="https://blog.naver.com/{blog_id}/postwrite",
+        footer_url="",
+        footer_image_path=None,
         data_dir=data_dir,
         profile_dir=data_dir / "browser-profile",
         artifacts_dir=tmp_path / "artifacts",

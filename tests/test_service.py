@@ -1,9 +1,12 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from threads_to_naver.models import ThreadPost
+from threads_to_naver.naver import TempDraft
 from threads_to_naver.service import (
     THREADS_EARLIEST_TIMESTAMP,
     _refresh_token_if_due,
+    append_footer_to_temp_drafts,
     backfill,
     run,
 )
@@ -99,3 +102,35 @@ def test_backfill_uses_full_supported_history_oldest_first(
     assert int(captured["since"].timestamp()) == THREADS_EARLIEST_TIMESTAMP
     assert captured["until"] <= datetime.now(config.timezone)
     assert count == 2
+
+
+def test_footer_dry_run_lists_pending_without_editing(
+    config, monkeypatch, tmp_path
+) -> None:
+    image = tmp_path / "footer.png"
+    image.write_bytes(b"png")
+    footer_config = replace(
+        config,
+        footer_url="https://naver.me/example",
+        footer_image_path=image,
+    )
+
+    class FakeWriter:
+        def __init__(self, _config) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            pass
+
+        def list_temp_drafts(self) -> list[TempDraft]:
+            return [TempDraft("1"), TempDraft("2")]
+
+        def append_footer_to_temp_draft(self, *_args, **_kwargs) -> bool:
+            raise AssertionError("dry-run must not edit Naver")
+
+    monkeypatch.setattr("threads_to_naver.service.NaverDraftWriter", FakeWriter)
+
+    assert append_footer_to_temp_drafts(footer_config, dry_run=True) == 2
