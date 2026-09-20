@@ -218,10 +218,13 @@ class NaverDraftWriter:
             raise FileNotFoundError(f"Missing footer image: {footer_image_path}")
         paragraph = _find_last_visible_text_paragraph(page)
         if _editor_text_body_text(page).strip():
-            _place_caret_at_end(paragraph)
-            page.keyboard.press("Shift+Enter")
-            page.keyboard.press("Shift+Enter")
-            _insert_text_link_at_cursor(page, footer_url)
+            if _paragraph_is_in_list(paragraph):
+                _insert_text_link_after_list(page, paragraph, footer_url)
+            else:
+                _place_caret_at_end(paragraph)
+                page.keyboard.press("Shift+Enter")
+                page.keyboard.press("Shift+Enter")
+                _insert_text_link_at_cursor(page, footer_url)
         else:
             paragraph.click()
             page.keyboard.insert_text(".")
@@ -605,6 +608,61 @@ def _place_caret_at_end(paragraph: Locator) -> None:
         }
         """
     )
+
+
+def _paragraph_is_in_list(paragraph: Locator) -> bool:
+    return paragraph.locator("xpath=ancestor::li").count() > 0
+
+
+def _click_at_visual_text_end(paragraph: Locator) -> None:
+    nodes = paragraph.locator("span.__se-node")
+    for index in range(nodes.count() - 1, -1, -1):
+        node = nodes.nth(index)
+        if not node.is_visible():
+            continue
+        box = node.bounding_box()
+        if box is None:
+            continue
+        node.click(
+            position={
+                "x": max(1, box["width"] - 1),
+                "y": max(1, box["height"] / 2),
+            }
+        )
+        return
+    raise RuntimeError("Could not focus the end of the Naver list item.")
+
+
+def _insert_text_link_after_list(page: Page, paragraph: Locator, url: str) -> None:
+    original_text = paragraph.inner_text() or ""
+    section = paragraph.locator("xpath=ancestor::div[contains(@class,'se-section-text')]")
+    _click_at_visual_text_end(paragraph)
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(300)
+    page.keyboard.press("Enter")
+
+    tail: Locator | None = None
+    for _ in range(50):
+        candidate = section.locator(".se-text-paragraph").last
+        if (
+            candidate.count() == 1
+            and candidate.is_visible()
+            and not _paragraph_is_in_list(candidate)
+        ):
+            tail = candidate
+            break
+        page.wait_for_timeout(100)
+    if tail is None:
+        raise RuntimeError("Could not exit the Naver list before appending the footer.")
+    if (paragraph.inner_text() or "") != original_text:
+        raise RuntimeError(
+            "The Naver list item changed while positioning the footer; no draft was saved."
+        )
+
+    tail.click()
+    page.keyboard.insert_text(".")
+    page.keyboard.press("Backspace")
+    _insert_text_link_at_cursor(page, url)
 
 
 def _visible_image_count(page: Page) -> int:

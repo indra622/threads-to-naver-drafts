@@ -11,6 +11,7 @@ from threads_to_naver.naver import (
     _insert_verbatim,
     _is_safe_draft_label,
     _make_text_link,
+    _paragraph_is_in_list,
     _upload_video,
 )
 
@@ -216,4 +217,18 @@ def test_empty_text_body_ignores_title_and_video_metadata() -> None:
         )
 
         assert _editor_text_body_text(page).strip() == ""
+        browser.close()
+
+
+def test_list_paragraph_is_detected() -> None:
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(
+            '<ul><li><p id="list-item" class="se-text-paragraph">항목</p></li></ul>'
+            '<p id="normal" class="se-text-paragraph">문단</p>'
+        )
+
+        assert _paragraph_is_in_list(page.locator("#list-item")) is True
+        assert _paragraph_is_in_list(page.locator("#normal")) is False
         browser.close()
