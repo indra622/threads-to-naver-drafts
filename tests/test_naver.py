@@ -1,9 +1,12 @@
+from pathlib import Path
+
 from playwright.sync_api import sync_playwright
 
 from threads_to_naver.naver import (
     _dismiss_restore_popup,
     _insert_verbatim,
     _is_safe_draft_label,
+    _upload_video,
 )
 
 
@@ -80,4 +83,34 @@ def test_unknown_popup_is_not_touched() -> None:
         )
         assert _dismiss_restore_popup(page) is False
         assert page.locator('[data-group="popupLayer"]').is_visible()
+        browser.close()
+
+
+def test_video_upload_uses_nested_uploader_and_required_title(
+    tmp_path: Path,
+) -> None:
+    video = tmp_path / "sample.mp4"
+    video.write_bytes(b"not-a-real-video")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(
+            '<button data-name="video" '
+            "onclick=\"document.querySelector('.se-popup-video-upload').style.display='block';"
+            "setTimeout(() => document.querySelector('.nvu_local').style.display='block', 100)\">"
+            "동영상</button>"
+            '<div class="se-popup-video-upload" style="display:none">'
+            '<button class="nvu_local" style="display:none" '
+            'onclick="document.querySelector(\'#file\').click()">동영상 추가</button>'
+            '<input id="file" type="file" style="display:none" '
+            "onchange=\"document.querySelector('#status').textContent='업로드 완료'\">"
+            '<input placeholder="제목을 입력하세요. (최대 40자, 필수)">'
+            '<span id="status">업로드 진행중</span>'
+            '<button onclick="this.parentElement.remove()">완료</button>'
+            "</div>"
+        )
+
+        _upload_video(page, video, "가" * 50)
+
+        assert page.locator(".se-popup-video-upload").count() == 0
         browser.close()

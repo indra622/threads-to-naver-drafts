@@ -111,20 +111,23 @@ class NaverDraftWriter:
 
         paths = list(media_paths)
         if paths:
-            self._upload_media(page, paths)
+            self._upload_media(page, paths, post.title)
 
         draft_button = _find_safe_draft_button(page)
         draft_button.click()
         page.wait_for_timeout(5_000)
         self._save_artifact(page, post.id, "saved")
 
-    def _upload_media(self, page: Page, paths: list[Path]) -> None:
+    def _upload_media(self, page: Page, paths: list[Path], post_title: str) -> None:
         for path in paths:
             is_video = path.suffix.lower() in VIDEO_SUFFIXES
+            if is_video:
+                _upload_video(page, path, post_title)
+                continue
             upload_button = _find_visible(
                 page,
-                VIDEO_BUTTON_SELECTORS if is_video else IMAGE_BUTTON_SELECTORS,
-                "video upload button" if is_video else "image upload button",
+                IMAGE_BUTTON_SELECTORS,
+                "image upload button",
             )
             with page.expect_file_chooser(timeout=10_000) as chooser_info:
                 upload_button.click()
@@ -269,3 +272,30 @@ def _dismiss_restore_popup(page: Page) -> bool:
                 popup.wait_for(state="hidden", timeout=10_000)
                 return True
     return False
+
+
+def _upload_video(page: Page, path: Path, title: str) -> None:
+    toolbar_button = _find_visible(page, VIDEO_BUTTON_SELECTORS, "video upload button")
+    toolbar_button.click()
+    popup = _find_visible(page, (".se-popup-video-upload",), "video upload dialog")
+    local_upload = popup.locator(".nvu_local").first
+    try:
+        local_upload.wait_for(state="visible", timeout=10_000)
+    except PlaywrightTimeoutError as error:
+        raise RuntimeError(
+            "Could not find Naver's local video upload control."
+        ) from error
+
+    with page.expect_file_chooser(timeout=10_000) as chooser_info:
+        local_upload.click()
+    chooser_info.value.set_files(str(path))
+
+    title_input = popup.get_by_placeholder("제목을 입력하세요. (최대 40자, 필수)")
+    title_input.wait_for(state="visible", timeout=10_000)
+    title_input.fill(title[:40])
+    popup.get_by_text("업로드 완료", exact=True).wait_for(
+        state="visible", timeout=120_000
+    )
+    done = popup.get_by_role("button", name="완료", exact=True)
+    done.click()
+    popup.wait_for(state="hidden", timeout=30_000)
