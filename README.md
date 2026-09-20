@@ -1,45 +1,85 @@
 # Threads → Naver Blog drafts
 
-Threads의 내 게시물을 공식 API로 읽고, 원문을 바꾸지 않은 채 네이버 블로그의 **임시저장 초안**으로 옮긴다. LLM은 사용하지 않으며 자동 공개도 하지 않는다.
+내 Threads 게시물을 공식 Threads API로 읽어 원문 그대로 네이버 블로그의 **임시저장 초안**으로 옮기는 macOS용 자동화 도구입니다.
 
-## 동작 원칙
+- LLM을 사용하지 않습니다.
+- 네이버 글을 자동 발행하지 않습니다.
+- 게시물 1개를 네이버 초안 1개로 저장합니다.
+- 답글과 리포스트는 기본적으로 제외합니다.
+- 이미지, 캐러셀, 동영상을 함께 옮깁니다.
+- SQLite로 처리 이력을 관리해 중단 후 재개해도 중복 초안을 만들지 않습니다.
 
-- 게시물 1개 → 네이버 초안 1개
-- 본문은 Threads 원문을 그대로 사용
-- 제목은 첫 번째 비어 있지 않은 줄의 앞 100자(본문은 그대로 유지)
-- 답글과 리포스트는 기본 제외
-- Threads 게시물 ID를 SQLite에 기록해 중복 초안 방지
-- 상단의 `저장`/`임시저장`이라고 확인된 컨트롤만 클릭하며 `발행`은 클릭하지 않음
-- 임시저장 수가 98개 이상이면 기존 초안 보호를 위해 새 초안 생성을 중단
-- Threads 토큰은 평문 설정 파일이 아니라 macOS Keychain에 저장
-- 장기 토큰은 발급 24시간 이후 일배치 실행 중 공식 API로 자동 갱신
-- 네이버 비밀번호는 스크립트가 받지 않고 전용 브라우저 프로필의 로그인 세션만 사용
+> 네이버는 현재 공식 블로그 글쓰기 API를 제공하지 않으므로 Playwright로 SmartEditor 화면을 조작합니다. 네이버 UI가 바뀌면 선택자 보정이 필요할 수 있습니다.
+
+## 안전장치
+
+- 본문은 Threads 원문을 그대로 입력합니다.
+- 제목은 첫 번째 비어 있지 않은 줄의 앞 100자를 기계적으로 사용합니다.
+- 상단의 `저장` 또는 `임시저장`으로 확인된 컨트롤만 클릭합니다.
+- `발행`이 포함된 컨트롤은 저장 버튼으로 인정하지 않습니다.
+- 임시저장 수가 98개 이상이면 기존 초안 보호를 위해 새 초안을 만들지 않습니다.
+- 성공한 게시물만 SQLite에 기록합니다. 실패한 게시물은 다음 실행에서 다시 시도합니다.
+- Threads 토큰은 설정 파일이 아니라 macOS Keychain에 저장합니다.
+- 네이버 비밀번호를 받거나 저장하지 않고 전용 Chromium 프로필의 로그인 세션만 사용합니다.
+
+## 요구사항
+
+- macOS
+- Python 3.11 이상
+- [uv](https://docs.astral.sh/uv/)
+- 자신의 게시물을 읽을 수 있는 Threads API 사용자 액세스 토큰
+- 네이버 블로그 계정
 
 ## 설치
 
 ```bash
-cd ~/codes/threads-to-naver-drafts
+git clone https://github.com/indra622/threads-to-naver-drafts.git
+cd threads-to-naver-drafts
+
 cp config.example.toml config.toml
-# 블로그가 여러 개면 config.toml에 naver_blog_id와 전용 글쓰기 URL을 설정
 uv sync --extra dev
 uv run playwright install chromium
 ```
 
-Meta Developer 앱에서 Threads 사용 사례를 추가하고, 자신의 게시물을 읽을 수 있는 사용자 액세스 토큰을 발급한다. 토큰은 아래 명령의 가려진 입력창에서 한 번만 입력한다.
+`config.toml`은 Git에서 제외됩니다. 블로그가 하나라면 기본값을 그대로 사용해도 됩니다.
+
+```toml
+naver_blog_id = ""
+timezone = "Asia/Seoul"
+headless = false
+include_replies = false
+include_reposts = false
+max_posts_per_run = 20
+naver_write_url = "https://blog.naver.com/{blog_id}/postwrite"
+```
+
+블로그가 여러 개라면 `naver_blog_id`와 해당 블로그의 글쓰기 URL을 설정하세요.
+
+## 로컬 인증 설정
+
+이 저장소에는 토큰, 쿠키, 비밀번호가 포함되어 있지 않습니다.
+
+Threads 액세스 토큰은 터미널의 가려진 입력창을 통해 macOS Keychain에 저장합니다.
 
 ```bash
 uv run threads-to-naver setup-token
 ```
 
-네이버 로그인 세션도 한 번 만든다. 비밀번호는 열린 브라우저에 직접 입력한다. 스크립트가 로그인 쿠키를 감지하면 자동으로 끝난다.
+입력 중 문자가 보이지 않는 것이 정상입니다. 장기 토큰은 저장 후 24시간이 지난 일배치 실행에서 공식 갱신 API로 하루 한 번 이하 갱신됩니다.
+
+네이버 로그인 세션은 전용 Chromium 프로필에 저장합니다.
 
 ```bash
 uv run threads-to-naver login
 ```
 
-## 안전한 첫 실행
+열린 브라우저에서 직접 로그인하세요. 비밀번호는 이 프로그램에 전달되지 않습니다.
 
-어제 게시물 목록만 가져와 JSON으로 확인한다. 이 단계에서는 네이버를 열지 않는다.
+## 사용법
+
+### 1. 먼저 dry-run
+
+기본 실행 대상은 전날 게시물입니다. `--dry-run`은 Threads 데이터만 읽어 `artifacts/`에 JSON을 만들고 네이버 브라우저는 열지 않습니다.
 
 ```bash
 uv run threads-to-naver run --dry-run
@@ -51,47 +91,89 @@ uv run threads-to-naver run --dry-run
 uv run threads-to-naver run --date 2026-09-19 --dry-run
 ```
 
-확인 후 실제 초안을 만든다.
-
-```bash
-uv run threads-to-naver run --date 2026-09-19
-```
-
-가장 최근 게시물 한 건만 실험할 때는 다음 명령을 사용한다.
+가장 최근 게시물 한 건만 확인하려면:
 
 ```bash
 uv run threads-to-naver run --latest --dry-run
+```
+
+### 2. 네이버 초안 생성
+
+```bash
+# 전날 게시물
+uv run threads-to-naver run
+
+# 특정 날짜
+uv run threads-to-naver run --date 2026-09-19
+
+# 가장 최근 게시물 한 건
 uv run threads-to-naver run --latest
 ```
 
-실패한 게시물은 SQLite에 완료 처리되지 않아 다음 실행에서 다시 시도된다. 실행 화면은 `artifacts/`에 남는다.
+### 3. 과거 게시물 백필
 
-전체 과거 원 게시물을 오래된 순서대로 백필하려면 다음 명령을 사용한다. 성공한 건은 즉시 SQLite에 기록되므로 중단 후 같은 명령으로 안전하게 재개된다.
+전체 과거 원 게시물을 오래된 순서대로 처리합니다.
 
 ```bash
 uv run threads-to-naver backfill --dry-run
 uv run threads-to-naver backfill
 ```
 
-네이버 임시저장 공간과 브라우저 상태를 보며 여러 묶음으로 나눌 때는 `--limit`을 사용한다.
+여러 묶음으로 나누려면 `--limit`을 사용합니다. 성공한 건은 즉시 SQLite에 기록되므로 같은 명령을 다시 실행하면 다음 미처리 게시물부터 재개합니다.
 
 ```bash
 uv run threads-to-naver backfill --limit 50
 ```
 
-## 매일 실행(선택)
+## 매일 오전 11시 실행
 
-현재 운영 설정은 매일 11:00에 **전날 게시물**을 초안으로 만든다.
+프로젝트에 포함된 설치 스크립트로 macOS LaunchAgent를 생성합니다.
 
 ```bash
 uv run python scripts/install_launchd.py --hour 11 --minute 0
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.threads-to-naver-drafts.plist
+launchctl bootstrap gui/$(id -u) \
+  ~/Library/LaunchAgents/local.threads-to-naver-drafts.plist
 ```
 
-스케줄을 설치하기 전 최소 한 번은 실제 초안 생성까지 확인한다. 브라우저를 표시하는 기본 설정에서는 로그인 만료나 네이버 편집기 변경을 눈으로 확인할 수 있다.
+이미 등록된 스케줄을 변경할 때는 기존 작업을 내린 뒤 다시 등록합니다.
+
+```bash
+launchctl bootout gui/$(id -u)/local.threads-to-naver-drafts
+uv run python scripts/install_launchd.py --hour 11 --minute 0
+launchctl bootstrap gui/$(id -u) \
+  ~/Library/LaunchAgents/local.threads-to-naver-drafts.plist
+```
+
+실행 로그:
+
+```text
+~/Library/Logs/threads-to-naver/stdout.log
+~/Library/Logs/threads-to-naver/stderr.log
+```
+
+## 로컬 데이터 위치
+
+다음 데이터는 Git에 포함되지 않습니다.
+
+- `config.toml`: 개인 설정
+- `artifacts/`: dry-run JSON, 저장 화면 캡처, 다운로드한 미디어
+- `~/.local/share/threads-to-naver/state.sqlite3`: 중복 방지 기록
+- `~/.local/share/threads-to-naver/browser-profile/`: 네이버 로그인 브라우저 프로필
+- macOS Keychain의 `threads-to-naver-drafts` 항목: Threads 토큰
+
+## 개발 및 검증
+
+```bash
+uv run pytest
+uvx ruff check .
+uv run python -m compileall -q src tests scripts
+```
 
 ## 현재 한계
 
-네이버는 공식 글쓰기 API를 제공하지 않으므로 편집기 화면이 바뀌면 선택자 보정이 필요할 수 있다. 안전을 위해 `임시저장` 컨트롤을 찾지 못하면 즉시 실패하며 공개 발행으로 대체하지 않는다.
+- 네이버 SmartEditor UI 변경 시 자동화가 실패할 수 있습니다.
+- 로그인 만료, CAPTCHA, 네트워크 장애가 발생하면 수동 확인이 필요합니다.
+- 임시저장 수가 98개에 도달하면 새 초안 생성을 중단합니다. 기존 초안을 발행하거나 삭제한 뒤 다시 실행하세요.
+- 공개 발행은 의도적으로 구현하지 않았습니다.
 
-임시저장 수가 98개에 도달하면 기존 초안 유실 가능성을 피하기 위해 일배치와 백필이 새 초안을 만들지 않는다. 초안을 검토해 발행하거나 삭제한 뒤 같은 명령을 다시 실행하면 SQLite 완료 기록 다음 항목부터 재개된다.
+개인 계정과 콘텐츠에 적용하기 전에 반드시 `--dry-run`과 최신 게시물 한 건으로 먼저 확인하세요.
