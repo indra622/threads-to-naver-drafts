@@ -224,8 +224,9 @@ class NaverDraftWriter:
             _insert_text_link_at_cursor(page, footer_url)
         else:
             paragraph.click()
-            page.keyboard.insert_text(footer_url)
-            _make_text_link(page, footer_url)
+            page.keyboard.insert_text(".")
+            page.keyboard.press("Backspace")
+            _insert_text_link_at_cursor(page, footer_url)
         paragraph = _find_paragraph_containing(page, footer_url)
         _place_caret_at_end(paragraph)
         page.keyboard.press("Shift+Enter")
@@ -363,6 +364,22 @@ def _find_visible(page: Page, selectors: tuple[str, ...], description: str) -> L
     )
 
 
+def _wait_for_visible(
+    page: Page,
+    selectors: tuple[str, ...],
+    description: str,
+    *,
+    timeout_ms: int = 5_000,
+) -> Locator:
+    attempts = max(1, timeout_ms // 100)
+    for _ in range(attempts):
+        try:
+            return _find_visible(page, selectors, description)
+        except RuntimeError:
+            page.wait_for_timeout(100)
+    return _find_visible(page, selectors, description)
+
+
 def _insert_verbatim(page: Page, text: str) -> None:
     lines = text.split("\n")
     for index, line in enumerate(lines):
@@ -494,19 +511,19 @@ def _make_text_link(page: Page, url: str) -> None:
     for _ in url:
         page.keyboard.press("Shift+ArrowLeft")
 
-    toolbar_button = _find_visible(
+    toolbar_button = _wait_for_visible(
         page,
         ('button[data-name="text-link"]',),
         "text-link toolbar button",
     )
     toolbar_button.click()
-    url_input = _find_visible(
+    url_input = _wait_for_visible(
         page,
         ('input[placeholder="URL을 입력하세요."]',),
         "text-link URL input",
     )
     url_input.fill(url)
-    apply_button = _find_visible(
+    apply_button = _wait_for_visible(
         page,
         ("button.se-custom-layer-link-apply-button",),
         "text-link apply button",
@@ -518,19 +535,19 @@ def _make_text_link(page: Page, url: str) -> None:
 
 
 def _insert_text_link_at_cursor(page: Page, url: str) -> None:
-    toolbar_button = _find_visible(
+    toolbar_button = _wait_for_visible(
         page,
         ('button[data-name="text-link"]',),
         "text-link toolbar button",
     )
     toolbar_button.click()
-    url_input = _find_visible(
+    url_input = _wait_for_visible(
         page,
         ('input[placeholder="URL을 입력하세요."]',),
         "text-link URL input",
     )
     url_input.fill(url)
-    apply_button = _find_visible(
+    apply_button = _wait_for_visible(
         page,
         ("button.se-custom-layer-link-apply-button",),
         "text-link apply button",

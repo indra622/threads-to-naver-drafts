@@ -165,7 +165,7 @@ def test_clickable_link_can_be_inserted_at_empty_cursor() -> None:
         page.set_content(
             '<div class="se-component-content" contenteditable="true">'
             '<p id="target" class="se-text-paragraph"><br></p></div>'
-            '<button data-name="text-link" '
+            '<button data-name="text-link" style="display:none" '
             "onclick=\"window.savedRange=getSelection().getRangeAt(0).cloneRange();"
             "document.querySelector('#link-box').style.display='block'\">링크</button>"
             '<div id="link-box" style="display:none">'
@@ -175,6 +175,10 @@ def test_clickable_link_can_be_inserted_at_empty_cursor() -> None:
             "const span=document.createElement('span');span.className='se-link';"
             "span.dataset.href=input.value;span.textContent=input.value;"
             "window.savedRange.insertNode(span)\">적용</button></div>"
+            '<script>setTimeout(() => {'
+            'document.querySelector(\'button[data-name="text-link"]\')'
+            '.style.display="block";'
+            '}, 100);</script>'
         )
         page.locator("#target").click()
 
